@@ -233,16 +233,26 @@ const forgotPassword = async (req, res, next) => {
 
 const requestUserVerification = async (req, res, next) => {
   try {
-    const token = req.get("Authorization");
+    // const token = req.get("Authorization");
     // console.log({ token });
 
-    const decryptedUser = await getUserFromToken(token.split(" ")[1]);
+    // const decryptedUser = await getUserFromToken(token.split(" ")[1]);
 
-    if (!decryptedUser) {
-      return next(new ErrorResponse("Please login to continue", 400));
+    // if (!decryptedUser) {
+    //   return next(new ErrorResponse("Please login to continue", 400));
+    // }
+
+    const { email } = req.params;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: `Pls check your inbox. If your email was registered with us, a verification link will be sent to "${user.email}"`,
+        //  data: { user },
+      });
     }
-
-    const user = await User.findById(decryptedUser.id);
 
     const verificationToken = await user.getVerificationToken();
     console.log({ verificationToken });
