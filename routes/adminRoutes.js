@@ -52,6 +52,10 @@ router.patch(
 
 router.get("/all-orders", authorizeAdmin, OrderController.getAllOrders);
 
+router.get("/users", authorizeAdmin, AdminController.getUsers);
+
+router.get("/users/:userid", authorizeAdmin, AdminController.getUser);
+
 router.get(
   "/dashboard-stats",
   authorizeAdmin,

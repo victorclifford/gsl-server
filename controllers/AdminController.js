@@ -23,6 +23,10 @@ exports.getUser = async (req, res, next) => {
     const { userid } = req?.params;
     const user = await User.findById(userid);
 
+    if (!user) {
+      return next(new ErrorResponse("User not found!", 404));
+    }
+
     return res.status(200).json({
       success: true,
       message: "User fetch successful",

@@ -30,5 +30,5 @@ router.put("/resetpassword/:resettoken", resetPassword);
 router.post("/verify-user/:verifytoken", userVerification);
 
 //req verification
-router.post("/request-verification", authorizeUser, requestUserVerification);
+router.post("/request-verification", requestUserVerification);
 module.exports = router;

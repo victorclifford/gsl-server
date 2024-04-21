@@ -394,3 +394,34 @@ exports.getBlog = async (req, res, next) => {
     return next(error);
   }
 };
+
+exports.deleteBlog = async (req, res, next) => {
+  try {
+    const { blogid } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(blogid)) {
+      return next(
+        new ErrorResponse("Invalid blog ID!", 400, "validationError")
+      );
+    }
+
+    const blog = await BlogModel.findOne({ _id: blogid });
+
+    if (!blog) {
+      return res.status(404).json({
+        success: false,
+        message: "Blog not found!",
+      });
+    }
+
+    blog.isDeleted = true;
+    await blog.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Blog deleted successfully",
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
