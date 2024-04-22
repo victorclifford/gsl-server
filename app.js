@@ -14,7 +14,11 @@ const productRoutes = require("./routes/productsRoutes");
 const blogRoutes = require("./routes/blogRoutes");
 const userRoutes = require("./routes/userRoutes");
 
-const origin = ["http://localhost:3000", "https://www.gosolar.ng"];
+const origin = [
+  "http://localhost:3000",
+  "https://www.gosolar.ng",
+  "https://go-solar-frontend.vercel.app/",
+];
 const app = express();
 
 // middlewares
