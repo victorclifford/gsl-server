@@ -29,7 +29,7 @@ exports.createOrder = async (req, res, next) => {
         new ErrorResponse("Please login to continue!", 401, "unauthorized")
       );
     }
-
+    console.log({ paymentReference });
     let itemsArray = [];
 
     for (const product of products) {
@@ -112,7 +112,7 @@ exports.createOrder = async (req, res, next) => {
       // let paymentVerified = false
       const PayStackAPI = new PaystackAPI();
       const verifiedPayment = await PayStackAPI.verifyPayment(paymentReference);
-      //   console.log({ verifiedPayment });
+      console.log({ verifiedPayment });
 
       if (!verifiedPayment.status && !verifiedPayment.data) {
         const errorMessage =
@@ -160,6 +160,7 @@ exports.createOrder = async (req, res, next) => {
         });
 
         subTotalPrice = totCost;
+        const totCostWithDelivery = totCost + totDeliveryFee;
         console.log({ totCost, totDeliveryFee, subTotalPrice });
 
         const estimatedDaysForDelivery = 7;
@@ -182,7 +183,7 @@ exports.createOrder = async (req, res, next) => {
             style: "currency",
             currency: "NGN",
           }),
-          totalCost: totCost.toLocaleString("en-US", {
+          totalCost: totCostWithDelivery.toLocaleString("en-US", {
             style: "currency",
             currency: "NGN",
           }),
