@@ -12,7 +12,7 @@ const CategoryModel = require("../models/CategoryModel");
 //get all products
 exports.getAllProducts = async (req, res, next) => {
   try {
-    const products = await Product.find({ isDeleted: false, isPublished: true })
+    const products = await Product.find({ isDeleted: false })
       .populate(["category"])
       .sort({
         createdAt: -1,
