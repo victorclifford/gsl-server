@@ -410,7 +410,9 @@ exports.getProduct = async (req, res, next) => {
       );
     }
 
-    const product = await Product.findOne({ _id: productid, isDeleted: false });
+    const product = await Product.findOne({ _id: productid, isDeleted: false })
+      .populate("category")
+      .exec();
 
     if (!product) {
       return res.status(404).json({
