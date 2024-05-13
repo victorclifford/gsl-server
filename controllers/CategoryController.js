@@ -18,7 +18,8 @@ exports.addCategory = async (req, res, next) => {
       return next(e);
     }
 
-    const catExist = await Category.findOne({ name });
+    const catDbName = firstLetterInStringToUppercase(name);
+    const catExist = await Category.findOne({ name: catDbName });
     if (catExist) {
       return next(
         new ErrorResponse(
@@ -40,13 +41,13 @@ exports.addCategory = async (req, res, next) => {
     //create category with Category model
     const newCategory = await Category.create({ ...categoryData });
     if (newCategory) {
-      const allCategories = await Category.find({});
+      // const allCategories = await Category.find({});
 
       //return response
       return res.status(201).json({
         success: true,
         message: "category created successfully",
-        categories: allCategories,
+        category: newCategory,
       });
     }
   } catch (error) {

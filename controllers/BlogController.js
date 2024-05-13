@@ -139,13 +139,13 @@ exports.createBlog = async (req, res, next) => {
         });
       }
 
-      const allBlogs = await BlogModel.find({}).sort({ createdAt: -1 }).exec();
+      // const allBlogs = await BlogModel.find({}).sort({ createdAt: -1 }).exec();
 
       //return response
       return res.status(201).json({
         success: true,
         message: "Blog created successfully",
-        blogs: allBlogs,
+        blog: newBlog,
       });
     }
   } catch (error) {
