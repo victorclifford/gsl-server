@@ -1,6 +1,10 @@
 const express = require("express");
 const upload = require("../utils/multer");
-const { addCategory } = require("../controllers/CategoryController.js");
+const {
+  addCategory,
+  updateCategory,
+  deleteCategory,
+} = require("../controllers/CategoryController.js");
 const {
   authorizeSuperAdmin,
   authorizeAdmin,
@@ -18,6 +22,10 @@ const router = express.Router();
 
 // create a category
 router.post("/create-category", authorizeSuperAdmin, addCategory);
+
+router.patch("/update-category", authorizeSuperAdmin, updateCategory);
+
+router.delete("category/:id", authorizeSuperAdmin, deleteCategory);
 
 //add product
 const uploadFields = upload.fields([{ name: "images", maxCount: 3 }]);
