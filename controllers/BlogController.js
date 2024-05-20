@@ -337,13 +337,13 @@ exports.updateBlog = async (req, res, next) => {
       });
     }
 
-    const allBlogs = await BlogModel.find({}).sort({ createdAt: -1 }).exec();
+    // const allBlogs = await BlogModel.find({}).sort({ createdAt: -1 }).exec();
 
     //return response
     return res.status(200).json({
       success: true,
       message: "Blog updated successfully",
-      blogs: allBlogs,
+      blogs: updatedBlog,
     });
   } catch (error) {
     return next(error);
