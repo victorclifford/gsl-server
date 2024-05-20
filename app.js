@@ -61,8 +61,8 @@ app.get("/", (req, res) => {
 
 app.get("/products", async (req, res) => {
   const products = await ProductModel.find({});
+  // console.log(req);
   return res.status(200).json(products);
-  //   console.log(req);
 });
 
 app.use(error);
