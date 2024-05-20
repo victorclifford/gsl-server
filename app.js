@@ -6,6 +6,8 @@ const helmet = require("helmet");
 const ErrorResponse = require("./utils/errorResponse");
 const error = require("./middlewares/error");
 
+const ProductModel = require("./models/ProductModel");
+
 //routes imports
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
@@ -54,6 +56,12 @@ app.use("/api/users", userRoutes);
 
 app.get("/", (req, res) => {
   res.send("<h3>GO_SOLAR: server running...</h3>");
+  //   console.log(req);
+});
+
+app.get("/products", async (req, res) => {
+  const products = await ProductModel.find({});
+  return res.status(200).json(products);
   //   console.log(req);
 });
 
