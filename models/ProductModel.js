@@ -60,6 +60,7 @@ const ProductSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    currentOffer: { type: Schema.ObjectId, ref: "Offer" },
   },
   { timestamps: true }
 );

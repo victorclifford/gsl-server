@@ -4,10 +4,7 @@ const mongoose = require("mongoose");
 exports.signupValidationSchema = yup.object().shape({
   // firstname: yup.string().min(6).max(30).required("your fullname is required"),
   // lastname: yup.string().min(6).max(30).required("your fullname is required"),
-  email: yup
-    .string()
-    .email("please provide a valid email")
-    .required("email is required"),
+  email: yup.string().email("please provide a valid email").required("email is required"),
   password: yup
     .string()
     .min(5, "password is to weak")
@@ -25,6 +22,13 @@ exports.signupValidationSchema = yup.object().shape({
 exports.categoryValidationSchema = yup.object().shape({
   name: yup.string().required().min(3).max(30),
   description: yup.string().required().min(5).max(300),
+});
+
+exports.offerValidationSchema = yup.object().shape({
+  name: yup.string().required().min(3).max(30),
+  description: yup.string().max(300),
+  type: yup.string().required().min(3).max(15),
+  percentageOff: yup.number().max(99),
 });
 
 //url validation schema
@@ -47,12 +51,7 @@ exports.validatePhoneNumber = yup.object().shape({
   phoneNumber: yup.string().min(10).max(15).required(),
 });
 
-exports.validateArrayOfStrings = function validateStringArray(
-  arrOfStrings,
-  min,
-  max,
-  field
-) {
+exports.validateArrayOfStrings = function validateStringArray(arrOfStrings, min, max, field) {
   // check if arr is an array
   if (!Array.isArray(arrOfStrings)) {
     return {
@@ -61,8 +60,7 @@ exports.validateArrayOfStrings = function validateStringArray(
     };
   }
   const validString = arrOfStrings.every(
-    (elem) =>
-      typeof elem === "string" && elem.length <= max && elem.length >= min
+    (elem) => typeof elem === "string" && elem.length <= max && elem.length >= min
   );
   if (validString) {
     return {

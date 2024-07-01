@@ -8,15 +8,17 @@ const { addProductSchema } = require("../utils/validationSchemas");
 const { firstLetterInStringToUppercase } = require("../utils/helpers");
 const { cloudinary } = require("../utils/cloudinary");
 const CategoryModel = require("../models/CategoryModel");
+const OfferModel = require("../models/OfferModel");
 
 //get all products
 exports.getAllProducts = async (req, res, next) => {
   try {
     const products = await Product.find({ isDeleted: false })
-      .populate(["category"])
+      .populate(["category", "currentOffer"])
       .sort({
         createdAt: -1,
       })
+      .lean()
       .exec();
     return res.status(200).json({
       success: true,
@@ -41,13 +43,14 @@ exports.addProducts = async (req, res, next) => {
       additionalInfo,
       outsideLocationDeliveryFee,
       withinLocationDeliveryFee,
+      currentOffer,
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(category)) {
-      return next(
-        new ErrorResponse("Invalid Category ID!", 400, "validationError")
-      );
+      return next(new ErrorResponse("Invalid Category ID!", 400, "validationError"));
     }
+
+    let productData = {};
 
     //validate user input
     try {
@@ -58,9 +61,7 @@ exports.addProducts = async (req, res, next) => {
     }
 
     if (brand && brand.length > 50) {
-      return next(
-        new ErrorResponse("Brand name is too long.", 400, "validationError")
-      );
+      return next(new ErrorResponse("Brand name is too long.", 400, "validationError"));
     }
 
     if (additionalInfo && additionalInfo.length > 300) {
@@ -71,6 +72,19 @@ exports.addProducts = async (req, res, next) => {
           "validationError"
         )
       );
+    }
+
+    if (currentOffer) {
+      if (!mongoose.Types.ObjectId.isValid(currentOffer)) {
+        return next(new ErrorResponse("Invalid Offer ID!", 400, "validationError"));
+      }
+
+      const offerExists = await OfferModel.findOne({ _id: currentOffer });
+      if (!offerExists) {
+        return next(new ErrorResponse("The Selected Offer Was Not Found!", 404, "notFound"));
+      }
+
+      productData.currentOffer = currentOffer;
     }
 
     //upload image and save url and id of image
@@ -93,9 +107,7 @@ exports.addProducts = async (req, res, next) => {
             if (err) {
               console.error("err deleting file in project folder::", err);
             }
-            console.log(
-              `${fi.path} has been deleted after successful cloud upload`
-            );
+            console.log(`${fi.path} has been deleted after successful cloud upload`);
           });
         });
 
@@ -120,7 +132,8 @@ exports.addProducts = async (req, res, next) => {
       return next(new ErrorResponse(err.message, 500, "uploadError"));
     }
 
-    const productData = {
+    productData = {
+      ...productData,
       name: name.toUpperCase(),
       slug: `${slugify(name)}-${generateRandomCode(4)}`,
       description,
@@ -156,35 +169,39 @@ exports.updateProduct = async (req, res, next) => {
       price,
       brand,
       quantityInStock,
+      currentOffer,
     } = req.body;
 
     //validations
 
     if (!mongoose.Types.ObjectId.isValid(productId)) {
-      return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
-      );
+      return next(new ErrorResponse("Invalid product ID!", 400, "validationError"));
     }
 
     const productToBeUpdated = await Product.findById(productId);
     if (!productToBeUpdated) {
-      return next(
-        new ErrorResponse("Product not found!", 404, "validationError")
-      );
+      return next(new ErrorResponse("Product not found!", 404, "validationError"));
     }
 
     if (category) {
       if (!mongoose.Types.ObjectId.isValid(category)) {
-        return next(
-          new ErrorResponse("Invalid category ID!", 400, "validationError")
-        );
+        return next(new ErrorResponse("Invalid category ID!", 400, "validationError"));
       }
 
       const categoryToBeUpdated = await CategoryModel.findById(category);
       if (!categoryToBeUpdated) {
-        return next(
-          new ErrorResponse("Category not found!", 404, "validationError")
-        );
+        return next(new ErrorResponse("Category not found!", 404, "validationError"));
+      }
+    }
+
+    if (currentOffer) {
+      if (!mongoose.Types.ObjectId.isValid(currentOffer)) {
+        return next(new ErrorResponse("Invalid Offer ID!", 400, "validationError"));
+      }
+
+      const offerExists = await OfferModel.findOne({ _id: currentOffer });
+      if (!offerExists) {
+        return next(new ErrorResponse("The Selected Offer Was Not Found!", 404, "notFound"));
       }
     }
 
@@ -309,25 +326,19 @@ exports.updateProductImage = async (req, res, next) => {
   try {
     console.log("rq??", req.file);
     if (!req.file) {
-      return next(
-        new ErrorResponse("Please add an image", 400, "validationError")
-      );
+      return next(new ErrorResponse("Please add an image", 400, "validationError"));
     }
 
     const { productId, imgId } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(productId)) {
-      return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
-      );
+      return next(new ErrorResponse("Invalid product ID!", 400, "validationError"));
     }
 
     //find product
     const product = await Product.findById(productId);
     if (!product) {
-      return next(
-        new ErrorResponse("Product not found", 404, "validationError")
-      );
+      return next(new ErrorResponse("Product not found", 404, "validationError"));
     }
 
     //find img to be updated
@@ -339,19 +350,13 @@ exports.updateProductImage = async (req, res, next) => {
         if (err) {
           console.error("err deleting file in project folder::", err);
         }
-        console.log(
-          `${req.file.path} has been deleted after successful cloud upload`
-        );
+        console.log(`${req.file.path} has been deleted after successful cloud upload`);
       });
 
-      return next(
-        new ErrorResponse("Image to update not found", 404, "validationError")
-      );
+      return next(new ErrorResponse("Image to update not found", 404, "validationError"));
     }
 
-    const remainingImgs = product.images.filter(
-      (img) => img.public_id != imgId
-    );
+    const remainingImgs = product.images.filter((img) => img.public_id != imgId);
     console.log("remainingImgs::", remainingImgs);
 
     //update img
@@ -373,9 +378,7 @@ exports.updateProductImage = async (req, res, next) => {
         if (err) {
           console.error("err deleting file in project folder::", err);
         }
-        console.log(
-          `${req.file.path} has been deleted after successful cloud upload`
-        );
+        console.log(`${req.file.path} has been deleted after successful cloud upload`);
       });
 
       product.images = remainingImgs;
@@ -405,14 +408,12 @@ exports.getProduct = async (req, res, next) => {
     const { productid } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(productid)) {
-      return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
-      );
+      return next(new ErrorResponse("Invalid product ID!", 400, "validationError"));
     }
 
     const product = await Product.findOne({ _id: productid, isDeleted: false })
-      .populate("category")
-      .exec();
+      .populate(["category", "currentOffer"])
+      .lean();
 
     if (!product) {
       return res.status(404).json({
@@ -431,14 +432,62 @@ exports.getProduct = async (req, res, next) => {
   }
 };
 
+exports.updateProductsOffer = async (req, res, next) => {
+  const { products, offer } = req.body;
+
+  if (!Array.isArray(products) || !offer) {
+    return next(new ErrorResponse("Invalid request format", 400, "validationError"));
+  }
+
+  try {
+    // Validate the offer ID
+    if (!mongoose.Types.ObjectId.isValid(offer)) {
+      return next(new ErrorResponse("Invalid offer ID", 400, "validationError"));
+    }
+
+    // Validate each product ID
+    for (const productId of products) {
+      if (!mongoose.Types.ObjectId.isValid(productId)) {
+        return next(
+          new ErrorResponse(`Invalid product ID: ${productId}`, 400, "validationError")
+        );
+      }
+    }
+
+    // Prepare bulk write operations
+    const bulkOps = products.map((productId) => ({
+      updateOne: {
+        filter: { _id: new mongoose.Types.ObjectId(productId) },
+        update: { $set: { currentOffer: offer } },
+      },
+    }));
+
+    // Perform bulk write
+    const bulkWriteResult = await Product.bulkWrite(bulkOps);
+
+    // Check if any products were updated
+    if (bulkWriteResult.nModified === 0) {
+      return next(new ErrorResponse("No products were updated", 404, "validationError"));
+    }
+
+    // Retrieve the updated products
+    const updatedProducts = await Product.find({ _id: { $in: products } }).lean();
+
+    res
+      .status(200)
+      .json({ message: "Products offer updated successfully", products: updatedProducts });
+  } catch (error) {
+    console.error(error);
+    return next(new ErrorResponse("Internal server error", 500, "serverError"));
+  }
+};
+
 exports.deleteProduct = async (req, res, next) => {
   try {
     const { productid } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(productid)) {
-      return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
-      );
+      return next(new ErrorResponse("Invalid product ID!", 400, "validationError"));
     }
 
     const product = await Product.findOne({ _id: productid });

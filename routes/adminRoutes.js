@@ -5,14 +5,12 @@ const {
   updateCategory,
   deleteCategory,
 } = require("../controllers/CategoryController.js");
-const {
-  authorizeSuperAdmin,
-  authorizeAdmin,
-} = require("../middlewares/authorizations");
+const { authorizeSuperAdmin, authorizeAdmin } = require("../middlewares/authorizations");
 const {
   addProducts,
   updateProduct,
   updateProductImage,
+  updateProductsOffer,
 } = require("../controllers/ProductController.js");
 const BlogController = require("../controllers/BlogController");
 const OrderController = require("../controllers/OrderController");
@@ -33,6 +31,8 @@ router.post("/add-product", authorizeSuperAdmin, uploadFields, addProducts);
 
 //update product(details)
 router.patch("/update-product-details", updateProduct);
+
+router.patch("/add-offer-to-products", authorizeAdmin, updateProductsOffer);
 
 //update product(img)
 router.patch(
@@ -64,10 +64,6 @@ router.get("/users", authorizeAdmin, AdminController.getUsers);
 
 router.get("/users/:userid", authorizeAdmin, AdminController.getUser);
 
-router.get(
-  "/dashboard-stats",
-  authorizeAdmin,
-  AdminController.getDashboardStats
-);
+router.get("/dashboard-stats", authorizeAdmin, AdminController.getDashboardStats);
 
 module.exports = router;
