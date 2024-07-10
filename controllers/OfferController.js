@@ -13,6 +13,16 @@ exports.createOffer = async (req, res, next) => {
     //validate user input
     try {
       await offerValidationSchema.validate(req.body, { abortEarly: true });
+
+      if (percentageOff && priceSlash) {
+        return next(
+          new ErrorResponse(
+            "Percentage off and Price slash cannot be used together!",
+            400,
+            "validationError"
+          )
+        );
+      }
     } catch (e) {
       e.statusCode = 400;
       return next(e);
@@ -97,7 +107,8 @@ exports.getOffer = async (req, res, next) => {
 
 exports.updateOffer = async (req, res, next) => {
   try {
-    const { name, description, offerId, percentageOff, priceSlash, type } = req.body;
+    const { name, description, percentageOff, priceSlash, type } = req.body;
+    const { offerId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(offerId)) {
       return next(new ErrorResponse("Invalid offer ID!", 400, "validationError"));
@@ -137,6 +148,16 @@ exports.updateOffer = async (req, res, next) => {
       }
     }
 
+    if (percentageOff && priceSlash) {
+      return next(
+        new ErrorResponse(
+          "Percentage off and Price slash cannot be used together!",
+          400,
+          "validationError"
+        )
+      );
+    }
+
     if (percentageOff) {
       if (parseFloat(percentageOff) > 99) {
         return next(
@@ -166,6 +187,14 @@ exports.updateOffer = async (req, res, next) => {
     };
 
     const cleanedData = cleanUpdateData(req.body);
+
+    if (percentageOff !== undefined) {
+      cleanedData.percentageOff = percentageOff;
+    }
+
+    if (priceSlash !== undefined) {
+      cleanedData.priceSlash = priceSlash;
+    }
 
     //update document after validations for available fields are complete
     const updatedOffer = await Offer.findOneAndUpdate(
