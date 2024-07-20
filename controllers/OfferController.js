@@ -107,7 +107,7 @@ exports.getOffer = async (req, res, next) => {
 
 exports.updateOffer = async (req, res, next) => {
   try {
-    const { name, description, percentageOff, priceSlash, type } = req.body;
+    const { name, description, percentageOff, priceSlash, type, isActive } = req.body;
     const { offerId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(offerId)) {

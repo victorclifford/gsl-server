@@ -15,28 +15,21 @@ const UserModel = require("../models/UserModel");
 
 exports.createOrder = async (req, res, next) => {
   try {
-    const {
-      products,
-      paymentReference,
-      paymentMethod,
-      totalPricePaid,
-      deliveryDetails,
-    } = req.body;
+    const { products, paymentReference, paymentMethod, totalPricePaid, deliveryDetails } =
+      req.body;
 
     const user = req.user;
     if (!user) {
-      return next(
-        new ErrorResponse("Please login to continue!", 401, "unauthorized")
-      );
+      return next(new ErrorResponse("Please login to continue!", 401, "unauthorized"));
     }
     console.log({ paymentReference });
     let itemsArray = [];
 
+    let purchasedProducts = [];
+
     for (const product of products) {
       if (product?.qty < 1 || !product?.qty) {
-        return next(
-          new ErrorResponse("Invalid product Quantity!", 400, "validationError")
-        );
+        return next(new ErrorResponse("Invalid product Quantity!", 400, "validationError"));
       }
 
       if (!product?.deliveryFee) {
@@ -50,9 +43,7 @@ exports.createOrder = async (req, res, next) => {
       }
 
       if (!mongoose.Types.ObjectId.isValid(product?.product)) {
-        return next(
-          new ErrorResponse("Invalid product ID!", 400, "validationError")
-        );
+        return next(new ErrorResponse("Invalid product ID!", 400, "validationError"));
       }
 
       //check if products to be purchased still exists or is out of stock
@@ -80,6 +71,10 @@ exports.createOrder = async (req, res, next) => {
         );
       }
 
+      //subract qty from qty in stock
+      productExists.quantityInStock = productExists.quantityInStock - parseInt(product.qty);
+      purchasedProducts.push(productExists);
+
       itemsArray.push({
         itemName: productExists.name,
         itemQty: product.qty,
@@ -101,9 +96,7 @@ exports.createOrder = async (req, res, next) => {
       paymentReference: paymentReference,
     });
     if (orderRefExists) {
-      return next(
-        new ErrorResponse("Invalid payment ref!", 400, "validationError")
-      );
+      return next(new ErrorResponse("Invalid payment ref!", 400, "validationError"));
     }
 
     //check payment methods
@@ -127,11 +120,7 @@ exports.createOrder = async (req, res, next) => {
           user: user?._id,
         });
         if (!newOrder) {
-          new ErrorResponse(
-            `An unexpected error occured`,
-            500,
-            "validationError"
-          );
+          new ErrorResponse(`An unexpected error occured`, 500, "validationError");
         }
 
         //generate and save tracking id
@@ -147,8 +136,12 @@ exports.createOrder = async (req, res, next) => {
         newOrder.trackingId = trackingIdDoc._id;
         await newOrder.save();
 
-        //emails
+        //save subtracted quntity of purchased products
+        for (const product of purchasedProducts) {
+          product.save();
+        }
 
+        //emails
         const { suiteNumber, streetAddress, city, zipCode } = deliveryDetails;
         const cityAndZip = `${city} ${zipCode}`;
         let totDeliveryFee = 0;
@@ -164,12 +157,8 @@ exports.createOrder = async (req, res, next) => {
         console.log({ totCost, totDeliveryFee, subTotalPrice });
 
         const estimatedDaysForDelivery = 7;
-        const estimatedDateOfDelivery = addDaysToCurrentDate(
-          estimatedDaysForDelivery
-        );
-        const formattedDeliveryDateEstimate = dateStringToReadableDate(
-          estimatedDateOfDelivery
-        );
+        const estimatedDateOfDelivery = addDaysToCurrentDate(estimatedDaysForDelivery);
+        const formattedDeliveryDateEstimate = dateStringToReadableDate(estimatedDateOfDelivery);
 
         let orderConfirmedEmailData = {
           from: config.EMAIL_FROM,
@@ -248,9 +237,7 @@ exports.createOrder = async (req, res, next) => {
         });
       }
     } else {
-      return next(
-        new ErrorResponse(`Unsupported payment method`, 400, "validationError")
-      );
+      return next(new ErrorResponse(`Unsupported payment method`, 400, "validationError"));
     }
   } catch (error) {
     return next(error);
@@ -263,9 +250,7 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
 
     const orderToBeUpdated = await OrderModel.findOne({ trackingId });
     if (!orderToBeUpdated) {
-      return next(
-        new ErrorResponse("Order not found!", 404, "validationError")
-      );
+      return next(new ErrorResponse("Order not found!", 404, "validationError"));
     }
 
     let trackingStatus = "Processing";
@@ -287,13 +272,7 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
     } else if (trackingLevel === 3) {
       trackingStatus = "Recieved";
     } else {
-      return next(
-        new ErrorResponse(
-          "Invalid tracking status sent!",
-          400,
-          "validationError"
-        )
-      );
+      return next(new ErrorResponse("Invalid tracking status sent!", 400, "validationError"));
     }
 
     orderToBeUpdated.trackingLevel = trackingLevel;

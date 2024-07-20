@@ -9,6 +9,7 @@ const OfferModel = new Schema(
     type: { type: String, enum: ["Price Slash", "Percentage Off"] },
     priceSlash: Number,
     percentageOff: Number,
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
