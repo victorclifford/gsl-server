@@ -12,6 +12,7 @@ const TrackingIdModel = require("../models/TrackingId");
 const PaystackAPI = require("../utils/paystack");
 const { sendEmail } = require("../utils/sendEmail");
 const UserModel = require("../models/UserModel");
+const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
 
 exports.createOrder = async (req, res, next) => {
   try {
@@ -187,7 +188,17 @@ exports.createOrder = async (req, res, next) => {
         };
 
         //send buyers copy email
-        sendEmail(orderConfirmedEmailData);
+        // sendEmail(orderConfirmedEmailData);
+
+        sendBrevoEmail({
+          // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+          to: [{ email: user.email, name: user.firstname }],
+          templateName: "order-confirmed",
+          parameters: {
+            SupportAgentName: "Jessy",
+          },
+          ...orderConfirmedEmailData,
+        });
 
         //admins email copy
         const admins = await UserModel.find({
@@ -227,7 +238,16 @@ exports.createOrder = async (req, res, next) => {
             estimatedDeliveryDate: formattedDeliveryDateEstimate,
           };
 
-          sendEmail(adminEmailData);
+          // sendEmail(adminEmailData);
+          sendBrevoEmail({
+            // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+            to: [{ email: admin.email, name: admin.firstname }],
+            templateName: "order-recieved",
+            parameters: {
+              SupportAgentName: "Jessy",
+            },
+            ...adminEmailData,
+          });
         }
 
         return res.status(201).json({

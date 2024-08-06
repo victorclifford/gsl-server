@@ -5,6 +5,7 @@ const config = require("../utils/config");
 const { slugify } = require("../utils/helpers.js");
 const { categoryValidationSchema } = require("../utils/validationSchemas");
 const { firstLetterInStringToUppercase } = require("../utils/helpers");
+const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
 
 //create category
 exports.addCategory = async (req, res, next) => {
@@ -62,6 +63,15 @@ exports.getAllCategories = async (req, res, next) => {
     const categories = await Category.find({ isDeleted: false }).sort({
       createdAt: -1,
     });
+
+    // sendBrevoEmail({
+    //   sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+    //   to: [{ email: "victorgiadom29@gmail.com", name: "Victor Cliff" }],
+    //   subject: "Test Mail",
+    //   templateName: "testTemp",
+    //   parameters: { homieeLink: "https://gosolar.ng", SupportAgentName: "Jessy" },
+    // });
+
     return res.status(200).json({
       success: true,
       message: "Categories fetch successful",
@@ -78,9 +88,7 @@ exports.getCategory = async (req, res, next) => {
     const category = await Category.findOne({ isDeleted: false, _id: id });
 
     if (!category) {
-      return next(
-        new ErrorResponse("Category not found!", 404, "validationError")
-      );
+      return next(new ErrorResponse("Category not found!", 404, "validationError"));
     }
 
     return res.status(200).json({
@@ -98,23 +106,17 @@ exports.updateCategory = async (req, res, next) => {
     const { name, description, categoryId } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(categoryId)) {
-      return next(
-        new ErrorResponse("Invalid category ID!", 400, "validationError")
-      );
+      return next(new ErrorResponse("Invalid category ID!", 400, "validationError"));
     }
 
     const categoryToBeUpdated = await Category.findById(categoryId);
 
     if (!categoryToBeUpdated) {
-      return next(
-        new ErrorResponse("Category not found!", 404, "validationError")
-      );
+      return next(new ErrorResponse("Category not found!", 404, "validationError"));
     }
 
     if (categoryToBeUpdated?.isDeleted) {
-      return next(
-        new ErrorResponse("Category not found!", 404, "validationError")
-      );
+      return next(new ErrorResponse("Category not found!", 404, "validationError"));
     }
 
     if (name) {
@@ -194,16 +196,12 @@ exports.deleteCategory = async (req, res, next) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return next(
-        new ErrorResponse("Invalid category ID!", 400, "validationError")
-      );
+      return next(new ErrorResponse("Invalid category ID!", 400, "validationError"));
     }
 
     const categoryToBeUpdated = await Category.findById(id);
     if (!categoryToBeUpdated) {
-      return next(
-        new ErrorResponse("Category not found!", 404, "validationError")
-      );
+      return next(new ErrorResponse("Category not found!", 404, "validationError"));
     }
 
     categoryToBeUpdated.isDeleted = true;

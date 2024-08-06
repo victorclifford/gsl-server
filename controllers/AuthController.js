@@ -3,13 +3,11 @@ const User = require("../models/UserModel");
 const ErrorResponse = require("../utils/errorResponse");
 const config = require("../utils/config");
 const { sendEmail } = require("../utils/sendEmail");
+const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
 const sendMail2 = require("../utils/sendEmail2");
 const { signupValidationSchema } = require("../utils/validationSchemas");
 const jwt = require("jsonwebtoken");
-const {
-  slugify,
-  firstLetterInStringToUppercase,
-} = require("../utils/helpers.js");
+const { slugify, firstLetterInStringToUppercase } = require("../utils/helpers.js");
 
 const sendToken = async (user, statusCode, message, res) => {
   await user.getSignedToken();
@@ -18,14 +16,10 @@ const sendToken = async (user, statusCode, message, res) => {
   if (user?.password) {
     const { password: _, ...userInfo } = user.toObject();
 
-    return res
-      .status(statusCode)
-      .json({ success: true, message, data: { user: userInfo } });
+    return res.status(statusCode).json({ success: true, message, data: { user: userInfo } });
   }
 
-  return res
-    .status(statusCode)
-    .json({ success: true, message, data: { user } });
+  return res.status(statusCode).json({ success: true, message, data: { user } });
 };
 
 const getUserFromToken = async (token) => {
@@ -55,9 +49,7 @@ const signupUser = async (req, res, next) => {
     const { fullname, phonenumber, email, password } = req.body;
     const userExist = await User.findOne({ email });
     if (userExist) {
-      return next(
-        new ErrorResponse("this email is already in use!", 400, "duplicateKeys")
-      );
+      return next(new ErrorResponse("this email is already in use!", 400, "duplicateKeys"));
     }
 
     //name validations
@@ -107,15 +99,28 @@ const signupUser = async (req, res, next) => {
     const verificationUrl = `${host}/account/verify/${tokenWithId}`;
 
     // *send email for user to verify account before being able to login
-    sendEmail({
-      from: config.EMAIL_FROM,
-      to: user.email,
-      name: user.firstname,
+    // sendEmail({
+    //   from: config.EMAIL_FROM,
+    //   to: user.email,
+    //   name: user.firstname,
+    //   subject: "Activate Your Go Solar Account",
+    //   verificationUrl,
+    //   template: "welcome",
+    //   // text: message,
+    // });
+
+    sendBrevoEmail({
+      // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+      to: [{ email: user.email, name: user.firstname }],
       subject: "Activate Your Go Solar Account",
-      verificationUrl,
-      template: "welcome",
-      // text: message,
+      templateName: "welcome",
+      parameters: {
+        verificationUrl,
+        homieeLink: "https://gosolar.ng",
+        SupportAgentName: "Jessy",
+      },
     });
+
     // sendMail2({
     //   from: config.EMAIL_FROM,
     //   to: user.email,
@@ -151,9 +156,7 @@ const loginUser = async (req, res, next) => {
   console.log("args::", { ...req.body });
 
   if (!email || !password) {
-    return next(
-      new ErrorResponse("please provide an EMAIL and PASSWORD!", 400)
-    );
+    return next(new ErrorResponse("please provide an EMAIL and PASSWORD!", 400));
   }
   try {
     //getting user by email entered for login
@@ -165,9 +168,7 @@ const loginUser = async (req, res, next) => {
     //if user exist, then match encrypted password
     const isMatch = await user.matchPasswords(password);
     if (!isMatch) {
-      return next(
-        new ErrorResponse("invalid EMAIL or PASSWORD!", 401, "Validation Error")
-      );
+      return next(new ErrorResponse("invalid EMAIL or PASSWORD!", 401, "Validation Error"));
     }
     //if passwords where matched correctly then send token and login user
     sendToken(user, 200, "Authentication Successful", res);
@@ -196,13 +197,23 @@ const forgotPassword = async (req, res, next) => {
     console.log(`sending reset password email to ${email}...`);
 
     try {
-      sendEmail({
-        from: config.EMAIL_FROM,
-        to: user.email,
-        name: user.firstname,
+      // sendEmail({
+      //   from: config.EMAIL_FROM,
+      //   to: user.email,
+      //   name: user.firstname,
+      //   subject: "Forgot Your Password?",
+      //   resetURL,
+      //   template: "forget-password",
+      // });
+      sendBrevoEmail({
+        // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+        to: [{ email: user.email, name: user.firstname }],
         subject: "Forgot Your Password?",
-        resetURL,
-        template: "forget-password",
+        templateName: "forget-password",
+        parameters: {
+          resetURL,
+          SupportAgentName: "Jessy",
+        },
       });
 
       //   sendMail2({
@@ -223,9 +234,7 @@ const forgotPassword = async (req, res, next) => {
       return next(new ErrorResponse("Failed to send mail", 500));
     }
 
-    return res
-      .status(200)
-      .json({ success: true, data: "Email sent! Please check your inbox" });
+    return res.status(200).json({ success: true, data: "Email sent! Please check your inbox" });
   } catch (error) {
     return next(error);
   }
@@ -263,13 +272,24 @@ const requestUserVerification = async (req, res, next) => {
     const host = config.HOMEPAGE;
     const verificationUrl = `${host}/account/verify/${tokenWithId}`;
 
-    sendEmail({
-      from: config.EMAIL_FROM,
-      to: user.email,
-      name: user.firstname,
+    // sendEmail({
+    //   from: config.EMAIL_FROM,
+    //   to: user.email,
+    //   name: user.firstname,
+    //   subject: "Activate Your Go Solar Account",
+    //   verificationUrl,
+    //   template: "welcome",
+    // });
+
+    sendBrevoEmail({
+      // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+      to: [{ email: user.email, name: user.firstname }],
       subject: "Activate Your Go Solar Account",
-      verificationUrl,
-      template: "welcome",
+      templateName: "welcome",
+      parameters: {
+        verificationUrl,
+        SupportAgentName: "Jessy",
+      },
     });
 
     const message = `A verification link has been sent to ${user.email}`;
@@ -312,9 +332,7 @@ const userVerification = async (req, res, next) => {
     });
 
     if (!user) {
-      return next(
-        new ErrorResponse("Invalid or expired verification code", 401)
-      );
+      return next(new ErrorResponse("Invalid or expired verification code", 401));
     }
 
     //verify user if user was found
@@ -355,13 +373,7 @@ const resetPassword = async (req, res, next) => {
 
     //validate password
     if (!req.body.password) {
-      return next(
-        new ErrorResponse(
-          "Please provide your new password",
-          400,
-          "validationError"
-        )
-      );
+      return next(new ErrorResponse("Please provide your new password", 400, "validationError"));
     }
 
     user.password = req.body.password;
@@ -372,12 +384,22 @@ const resetPassword = async (req, res, next) => {
     await user.save();
 
     //send mail
-    sendEmail({
-      from: config.EMAIL_FROM,
-      to: user.email,
-      name: user.firstname,
+    // sendEmail({
+    //   from: config.EMAIL_FROM,
+    //   to: user.email,
+    //   name: user.firstname,
+    //   subject: "Password Reset Successful",
+    //   template: "password-reset-success",
+    // });
+
+    sendBrevoEmail({
+      // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+      to: [{ email: user.email, name: user.firstname }],
       subject: "Password Reset Successful",
-      template: "password-reset-success",
+      templateName: "password-reset-success",
+      parameters: {
+        SupportAgentName: "Jessy",
+      },
     });
 
     return res.status(201).json({
