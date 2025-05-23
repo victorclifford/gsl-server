@@ -10,7 +10,11 @@ const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
 // Function to load and compile Handlebars template from the views directory
 async function loadTemplate(templateName, parameters) {
-  const viewsPath = path.join(process.cwd(), "views", `${templateName}.handlebars`);
+  const viewsPath = path.join(
+    process.cwd(),
+    "views",
+    `${templateName}.handlebars`
+  );
   const templateContent = fs.readFileSync(viewsPath, "utf-8");
   const template = Handlebars.compile(templateContent);
   return template(parameters);
@@ -25,7 +29,7 @@ async function sendBrevoEmail(options) {
     console.log({ emailFrom });
 
     const data = {
-      sender: { name: "Jessy From GoSolar", email: emailFrom },
+      sender: { name: "Go Solar", email: emailFrom },
       to: to, // [{ email: 'recipient@example.com', name: 'Recipient Name' }]
       subject: subject,
       htmlContent: htmlContent,
@@ -41,7 +45,10 @@ async function sendBrevoEmail(options) {
 
     console.log("Email sent:", response?.data);
   } catch (error) {
-    console.error("Error sending email:", error.response ? error.response.data : error.message);
+    console.error(
+      "Error sending email:",
+      error.response ? error.response.data : error.message
+    );
   }
 }
 
