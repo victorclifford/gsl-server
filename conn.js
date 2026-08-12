@@ -1,23 +1,22 @@
-// require("dotenv").config();
 const mongoose = require("mongoose");
 const config = require("./utils/config");
 
 const connectDB = async () => {
   try {
-    let dbName = "";
-    if (process.env.NODE_ENV === "development") {
-      dbName = "gosolar_dev";
-      console.log("connecting to go_solar development DB...");
-    }
+    const dbName = "gosolar_dev";
 
     const db = await mongoose.connect(config.MONGO_URI, {
-      dbName: dbName,
+      dbName,
     });
-    console.log(`MONGODB CONNECTED TO: ${db.connection.host}...`);
+    console.log(
+      `✅ MongoDB Connected to: ${db.connection.host || "localhost"} (${db.connection.name})`,
+    );
     return db;
   } catch (error) {
-    console.log(error);
-    process.exit(1);
+    console.error("❌ MongoDB Connection Error:", error.message);
+    console.log(
+      "💡 Tip: Ensure MongoDB service is running locally or verify your MONGO_URI in .env",
+    );
   }
 };
 

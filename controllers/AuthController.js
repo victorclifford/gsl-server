@@ -12,20 +12,29 @@ const {
 } = require("../utils/helpers.js");
 
 const sendToken = async (user, statusCode, message, res) => {
-  await user.getSignedToken();
+  const accessToken = await user.getSignedToken();
+  const refreshToken = await user.getSignedRefreshToken();
   await user.save();
 
-  if (user?.password) {
-    const { password: _, ...userInfo } = user.toObject();
-
-    return res
-      .status(statusCode)
-      .json({ success: true, message, data: { user: userInfo } });
+  const userObj = user.toObject ? user.toObject() : { ...user };
+  if (userObj?.password) {
+    delete userObj.password;
   }
 
-  return res
-    .status(statusCode)
-    .json({ success: true, message, data: { user } });
+  return res.status(statusCode).json({
+    success: true,
+    message,
+    accessToken,
+    refreshToken,
+    data: {
+      user: {
+        ...userObj,
+        token: accessToken,
+        accessToken,
+        refreshToken,
+      },
+    },
+  });
 };
 
 const getUserFromToken = async (token) => {
@@ -389,6 +398,41 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
+//---------------- REFRESH TOKEN ----------------
+const refreshToken = async (req, res, next) => {
+  const token = req.body.refreshToken || req.headers["x-refresh-token"];
+
+  if (!token) {
+    return next(new ErrorResponse("Refresh token is required", 400));
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.REFRESH_TOKEN_SECRET);
+    const user = await User.findById(decoded.id).select("+refreshToken");
+
+    if (!user || user.refreshToken !== token) {
+      return next(
+        new ErrorResponse("Invalid or expired refresh token. Please login again.", 401)
+      );
+    }
+
+    const newAccessToken = await user.getSignedToken();
+    const newRefreshToken = await user.getSignedRefreshToken();
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Token refreshed successfully",
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    });
+  } catch (error) {
+    return next(
+      new ErrorResponse("Invalid or expired refresh token. Please login again.", 401)
+    );
+  }
+};
+
 module.exports = {
   signupUser,
   loginUser,
@@ -396,4 +440,5 @@ module.exports = {
   resetPassword,
   userVerification,
   requestUserVerification,
+  refreshToken,
 };

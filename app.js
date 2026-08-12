@@ -15,6 +15,11 @@ const categoryRoutes = require("./routes/categoriesRoutes");
 const productRoutes = require("./routes/productsRoutes");
 const blogRoutes = require("./routes/blogRoutes");
 const userRoutes = require("./routes/userRoutes");
+const packageRoutes = require("./routes/packageRoutes");
+const quoteRoutes = require("./routes/quoteRoutes");
+const projectRoutes = require("./routes/projectRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
+const offerRoutes = require("./routes/offerRoutes");
 
 const origin = [
   "http://localhost:3000",
@@ -53,6 +58,11 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/blogs", blogRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/packages", packageRoutes);
+app.use("/api/quotes", quoteRoutes);
+app.use("/api/projects", projectRoutes);
+app.use("/api/reviews", reviewRoutes);
+app.use("/api/offers", offerRoutes);
 
 app.get("/", (req, res) => {
   res.send("<h3>GO_SOLAR: server running...</h3>");

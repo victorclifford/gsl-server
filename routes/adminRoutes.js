@@ -64,6 +64,14 @@ router.get("/users", authorizeAdmin, AdminController.getUsers);
 
 router.get("/users/:userid", authorizeAdmin, AdminController.getUser);
 
+router.get("/admins", authorizeAdmin, AdminController.getAdminUsers);
+
+router.patch(
+  "/users/:userid/role",
+  authorizeSuperAdmin,
+  AdminController.updateUserRole
+);
+
 router.get(
   "/dashboard-stats",
   authorizeAdmin,

@@ -1,6 +1,6 @@
 require("dotenv").config;
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const config = require("../utils/config");
@@ -77,6 +77,10 @@ const UserSchema = new Schema(
     resetPasswordExpiration: {
       type: Date,
     },
+    refreshToken: {
+      type: String,
+      select: false,
+    },
   },
   { timestamps: true }
 );
@@ -98,11 +102,31 @@ UserSchema.methods.matchPasswords = async function (password) {
 };
 
 UserSchema.methods.getSignedToken = async function () {
-  const signedToken = await jwt.sign({ id: this._id }, config.JWT_SECRET, {
-    expiresIn: config.JWT_EXPIRY,
-  });
+  const signedToken = await jwt.sign(
+    {
+      id: this._id,
+      isAdmin: this.isAdmin,
+      isSuperAdmin: this.isSuperAdmin,
+    },
+    config.JWT_SECRET,
+    {
+      expiresIn: config.JWT_EXPIRY,
+    }
+  );
   this.token = signedToken;
   return signedToken;
+};
+
+UserSchema.methods.getSignedRefreshToken = async function () {
+  const signedRefreshToken = await jwt.sign(
+    { id: this._id },
+    config.REFRESH_TOKEN_SECRET,
+    {
+      expiresIn: config.REFRESH_TOKEN_EXPIRY,
+    }
+  );
+  this.refreshToken = signedRefreshToken;
+  return signedRefreshToken;
 };
 
 //method to generate the reset password token

@@ -118,3 +118,44 @@ exports.getDashboardStats = async (req, res, next) => {
     return next(error);
   }
 };
+
+exports.getAdminUsers = async (req, res, next) => {
+  try {
+    const admins = await User.find({
+      $or: [{ isAdmin: true }, { isSuperAdmin: true }],
+    }).select("-password");
+
+    return res.status(200).json({
+      success: true,
+      count: admins.length,
+      admins,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.updateUserRole = async (req, res, next) => {
+  try {
+    const { userid } = req.params;
+    const { isAdmin, isSuperAdmin } = req.body;
+
+    const user = await User.findById(userid);
+    if (!user) {
+      return next(new ErrorResponse("User not found!", 404));
+    }
+
+    if (isAdmin !== undefined) user.isAdmin = isAdmin;
+    if (isSuperAdmin !== undefined) user.isSuperAdmin = isSuperAdmin;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "User privileges updated successfully",
+      user,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
