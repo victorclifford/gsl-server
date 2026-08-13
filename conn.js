@@ -3,7 +3,11 @@ const config = require("./utils/config");
 
 const connectDB = async () => {
   try {
-    const dbName = "gosolar_dev";
+    let dbName = "";
+    if (process.env.NODE_ENV === "development") {
+      dbName = "gosolar_dev";
+      console.log("connecting to go_solar development DB...");
+    }
 
     const db = await mongoose.connect(config.MONGO_URI, {
       dbName,
@@ -14,9 +18,7 @@ const connectDB = async () => {
     return db;
   } catch (error) {
     console.error("❌ MongoDB Connection Error:", error.message);
-    console.log(
-      "💡 Tip: Ensure MongoDB service is running locally or verify your MONGO_URI in .env",
-    );
+    process.exit(1);
   }
 };
 
