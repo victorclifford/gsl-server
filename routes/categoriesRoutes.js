@@ -1,16 +1,35 @@
 const express = require("express");
-const upload = require("../utils/multer");
 const {
   getAllCategories,
+  getCategoryTree,
   getCategory,
+  addCategory,
+  updateCategory,
+  deleteCategory,
 } = require("../controllers/CategoryController.js");
-// const { addProducts } = require("../controllers/ProductController.js");
+const {
+  authorizeUser,
+  authorizeAdmin,
+} = require("../middlewares/authorizations");
 
 const router = express.Router();
 
-// get categories
+// PUBLIC: flat list of all categories
 router.get("/", getAllCategories);
 
+// PUBLIC: nested category tree (top-level + subcategories)
+router.get("/tree", getCategoryTree);
+
+// PUBLIC: single category by ID
 router.get("/:id", getCategory);
+
+// ADMIN: create category / subcategory
+router.post("/", authorizeUser, authorizeAdmin, addCategory);
+
+// ADMIN: update category
+router.put("/", authorizeUser, authorizeAdmin, updateCategory);
+
+// ADMIN: soft delete category
+router.delete("/:id", authorizeUser, authorizeAdmin, deleteCategory);
 
 module.exports = router;

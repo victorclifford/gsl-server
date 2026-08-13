@@ -7,6 +7,7 @@ const {
   userVerification,
   requestUserVerification,
   refreshToken,
+  logoutUser,
 } = require("../controllers/AuthController");
 const { authorizeUser } = require("../middlewares/authorizations");
 
@@ -17,6 +18,9 @@ router.post("/signup", signupUser);
 
 //LOGIN
 router.post("/login", loginUser);
+
+//LOGOUT
+router.post("/logout", logoutUser);
 
 //REFRESH TOKEN
 router.post("/refresh-token", refreshToken);

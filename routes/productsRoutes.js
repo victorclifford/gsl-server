@@ -6,6 +6,7 @@ const ProductController = require("../controllers/ProductController");
 const router = express.Router();
 
 router.get("/", ProductController.getAllProducts);
+router.get("/published", ProductController.getPublishedProducts);
 
 router.get("/:productid", ProductController.getProduct);
 

@@ -15,6 +15,11 @@ const connectDB = async () => {
     console.log(
       `✅ MongoDB Connected to: ${db.connection.host || "localhost"} (${db.connection.name})`,
     );
+
+    // Run database migrations on startup
+    const runDbMigration = require("./utils/migration");
+    await runDbMigration();
+
     return db;
   } catch (error) {
     console.error("❌ MongoDB Connection Error:", error.message);

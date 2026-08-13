@@ -17,28 +17,40 @@ const ProductSchema = new Schema(
     additionalInfo: {
       type: String,
     },
-    //category of product
+    //category of product — must be a subcategory (parent !== null)
     category: {
       type: Schema.ObjectId,
       ref: "Category",
+      required: true,
     },
     //images of product urls from cloudinary in an array
     images: {
       type: Array,
       required: true,
     },
-    //product purchase price
+    //product purchase price (regular / original price)
     price: {
       type: Number,
       required: true,
     },
+    //discounted sale price (0 if no discount)
+    discountPrice: {
+      type: Number,
+      default: 0,
+    },
+    //shipping / freight class for solar equipment
+    shippingClass: {
+      type: String,
+      enum: ["standard", "medium", "heavy_freight"],
+      default: "standard",
+    },
     withinLocationDeliveryFee: {
       type: Number,
-      required: true,
+      default: 0,
     },
     outsideLocationDeliveryFee: {
       type: Number,
-      required: true,
+      default: 0,
     },
 
     slug: {
@@ -50,7 +62,13 @@ const ProductSchema = new Schema(
     },
     quantityInStock: {
       type: Number,
-      required: true,
+      default: 0,
+    },
+    // optional link to a marketing campaign offer
+    currentOffer: {
+      type: Schema.ObjectId,
+      ref: "Offer",
+      default: null,
     },
     isDeleted: {
       type: Boolean,
@@ -60,8 +78,51 @@ const ProductSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    // technical specification table shown on product detail page
+    datasheet: [
+      {
+        key: { type: String, required: true },   // e.g. "Capacity"
+        value: { type: String, required: true },  // e.g. "200Ah"
+        _id: false,
+      },
+    ],
+    // admin toggle — controls whether the datasheet table is visible on the storefront
+    showDatasheet: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
 
+// Enforce subcategory assignment when categories have children
+ProductSchema.pre("save", async function (next) {
+  if (!this.isModified("category") || !this.category) return next();
+
+  try {
+    const Category = mongoose.model("Category");
+    const cat = await Category.findById(this.category);
+
+    if (!cat) {
+      return next(new Error("Invalid category: category not found."));
+    }
+
+    // If top-level category has subcategories, advise assigning to a subcategory
+    if (!cat.parent) {
+      const hasChildren = await Category.exists({ parent: cat._id, isDeleted: false });
+      if (hasChildren) {
+        return next(
+          new Error(
+            `"${cat.name}" is a top-level category. Please select one of its specific subcategories.`
+          )
+        );
+      }
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = mongoose.model("Product", ProductSchema);
+

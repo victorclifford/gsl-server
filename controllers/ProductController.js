@@ -9,11 +9,11 @@ const { firstLetterInStringToUppercase } = require("../utils/helpers");
 const { cloudinary } = require("../utils/cloudinary");
 const CategoryModel = require("../models/CategoryModel");
 
-//get all products
+//get all products (admin / all)
 exports.getAllProducts = async (req, res, next) => {
   try {
     const products = await Product.find({ isDeleted: false })
-      .populate(["category"])
+      .populate(["category", "currentOffer"])
       .sort({
         createdAt: -1,
       })
@@ -21,6 +21,25 @@ exports.getAllProducts = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Products fetch successful",
+      products,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+//get published products (customer storefront)
+exports.getPublishedProducts = async (req, res, next) => {
+  try {
+    const products = await Product.find({ isDeleted: false, isPublished: true })
+      .populate(["category", "currentOffer"])
+      .sort({
+        createdAt: -1,
+      })
+      .exec();
+    return res.status(200).json({
+      success: true,
+      message: "Published products fetched successfully",
       products,
     });
   } catch (error) {
@@ -36,11 +55,16 @@ exports.addProducts = async (req, res, next) => {
       name,
       description,
       price,
+      discountPrice,
+      shippingClass,
       quantityInStock,
       brand,
       additionalInfo,
       outsideLocationDeliveryFee,
       withinLocationDeliveryFee,
+      currentOffer,
+      datasheet,
+      showDatasheet,
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(category)) {
@@ -120,18 +144,32 @@ exports.addProducts = async (req, res, next) => {
       return next(new ErrorResponse(err.message, 500, "uploadError"));
     }
 
+    let parsedDatasheet = [];
+    if (datasheet) {
+      try {
+        parsedDatasheet = typeof datasheet === "string" ? JSON.parse(datasheet) : datasheet;
+      } catch (e) {
+        parsedDatasheet = [];
+      }
+    }
+
     const productData = {
       name: name.toUpperCase(),
       slug: `${slugify(name)}-${generateRandomCode(4)}`,
       description,
       additionalInfo,
       category,
-      quantityInStock,
-      price,
+      quantityInStock: Number(quantityInStock) || 0,
+      price: Number(price),
+      discountPrice: Number(discountPrice) || 0,
+      shippingClass: shippingClass || "standard",
       brand,
       images: images_uploads,
-      outsideLocationDeliveryFee,
-      withinLocationDeliveryFee,
+      outsideLocationDeliveryFee: Number(outsideLocationDeliveryFee) || 0,
+      withinLocationDeliveryFee: Number(withinLocationDeliveryFee) || 0,
+      currentOffer: currentOffer && mongoose.Types.ObjectId.isValid(currentOffer) ? currentOffer : null,
+      datasheet: parsedDatasheet,
+      showDatasheet: showDatasheet === true || showDatasheet === "true",
     };
 
     const newProduct = await Product.create(productData);
@@ -154,8 +192,13 @@ exports.updateProduct = async (req, res, next) => {
       additionalInfo,
       category,
       price,
+      discountPrice,
+      shippingClass,
       brand,
       quantityInStock,
+      datasheet,
+      showDatasheet,
+      currentOffer,
     } = req.body;
 
     //validations
@@ -411,7 +454,7 @@ exports.getProduct = async (req, res, next) => {
     }
 
     const product = await Product.findOne({ _id: productid, isDeleted: false })
-      .populate("category")
+      .populate(["category", "currentOffer"])
       .exec();
 
     if (!product) {
