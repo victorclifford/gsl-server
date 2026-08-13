@@ -12,6 +12,7 @@ const TrackingIdModel = require("../models/TrackingId");
 const PaystackAPI = require("../utils/paystack");
 const { sendEmail } = require("../utils/sendEmail");
 const UserModel = require("../models/UserModel");
+const paginate = require("../utils/paginate");
 
 exports.createOrder = async (req, res, next) => {
   try {
@@ -312,16 +313,20 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
 
 exports.getAllOrders = async (req, res, next) => {
   try {
-    const orders = await OrderModel.find({})
-      .populate(["user", "trackingId", "products.product"])
-      .sort({
-        createdAt: -1,
-      })
-      .exec();
+    const { page = 1, limit = 10 } = req.query;
+
+    const { data: orders, pagination } = await paginate(OrderModel, {}, {
+      page,
+      limit,
+      sort: { createdAt: -1 },
+      populate: ["user", "trackingId", "products.product"]
+    });
+
     return res.status(200).json({
       success: true,
       message: "Orders fetch successful",
       orders,
+      pagination
     });
   } catch (error) {
     return next(error);

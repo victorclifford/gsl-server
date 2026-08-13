@@ -53,6 +53,10 @@ const UserSchema = new Schema(
     lastLogin: {
       type: Date,
     },
+    roleTitle: {
+      type: String,
+      default: "",
+    },
   },
   { timestamps: true }
 );

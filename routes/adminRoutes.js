@@ -62,6 +62,8 @@ router.get("/all-orders", authorizeAdmin, OrderController.getAllOrders);
 
 router.get("/users", authorizeAdmin, AdminController.getUsers);
 
+router.post("/create-account", authorizeAdmin, AdminController.createAccount);
+
 router.get("/users/:userid", authorizeAdmin, AdminController.getUser);
 
 router.get("/admins", authorizeAdmin, AdminController.getAdminUsers);
