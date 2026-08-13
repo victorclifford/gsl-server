@@ -1,6 +1,7 @@
 const User = require("../models/UserModel");
 const Auth = require("../models/AuthModel");
 const OrderModel = require("../models/OrderModel");
+const QuoteModel = require("../models/QuoteModel");
 const ErrorResponse = require("../utils/errorResponse");
 const crypto = require("crypto");
 const paginate = require("../utils/paginate");
@@ -121,6 +122,25 @@ exports.getDashboardStats = async (req, res, next) => {
       return ordersPerMonth;
     };
 
+    // Aggregate solar calculations requested
+    const totalSolarLeads = await QuoteModel.countDocuments({});
+    const pendingSolarLeads = await QuoteModel.countDocuments({ status: "New Lead" });
+
+    const quoteAggregation = await QuoteModel.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalKw: { $sum: { $divide: ["$peakWatts", 1000] } }
+        }
+      }
+    ]);
+    const totalRequestedKw = quoteAggregation.length > 0 ? quoteAggregation[0].totalKw : 0;
+
+    // Fetch recent quotes/leads
+    const recentQuotes = await QuoteModel.find({})
+      .sort({ createdAt: -1 })
+      .limit(5);
+
     // Generate statistics report
     const generateStatisticsReport = (orders) => {
       const statisticsReport = {
@@ -128,7 +148,10 @@ exports.getDashboardStats = async (req, res, next) => {
         totalRevenue: calculateTotalRevenue(orders),
         revenuePerMonth: calculateRevenuePerMonth(orders),
         ordersPerMonth: calculateOrdersPerMonth(orders),
-        // Add more statistics as needed
+        totalSolarLeads,
+        pendingSolarLeads,
+        totalRequestedKw,
+        recentQuotes,
       };
       return statisticsReport;
     };
