@@ -517,6 +517,76 @@ const logoutUser = async (req, res, next) => {
   }
 };
 
+//---------------- UPDATE USER PROFILE ----------------
+const updateUserProfile = async (req, res, next) => {
+  try {
+    const { firstname, lastname, phoneNumber } = req.body;
+    const user = req.user;
+
+    if (firstname) user.firstname = firstLetterInStringToUppercase(firstname.trim());
+    if (lastname) user.lastname = firstLetterInStringToUppercase(lastname.trim());
+    if (phoneNumber !== undefined) user.phoneNumber = (phoneNumber || "").trim();
+
+    await user.save();
+
+    const sanitizedUser = {
+      _id: user._id,
+      firstname: user.firstname,
+      lastname: user.lastname,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
+      isAdmin: Boolean(user.isAdmin),
+      isSuperAdmin: Boolean(user.isSuperAdmin),
+      is_verified: Boolean(user.is_verified),
+      lastLogin: user.lastLogin,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: {
+        user: sanitizedUser,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+//---------------- CHANGE PASSWORD ----------------
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = req.user;
+
+    if (!currentPassword || !newPassword) {
+      return next(new ErrorResponse("Please provide current and new passwords", 400));
+    }
+
+    const auth = await Auth.findOne({ userId: user._id });
+    if (!auth) {
+      return next(new ErrorResponse("Authentication credentials not found", 404));
+    }
+
+    const isMatch = await auth.matchPasswords(currentPassword);
+    if (!isMatch) {
+      return next(new ErrorResponse("Invalid current password", 401));
+    }
+
+    auth.password = newPassword;
+    await auth.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password updated successfully",
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   signupUser,
   loginUser,
@@ -526,4 +596,6 @@ module.exports = {
   requestUserVerification,
   refreshToken,
   logoutUser,
+  updateUserProfile,
+  changePassword,
 };

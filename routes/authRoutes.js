@@ -8,6 +8,8 @@ const {
   requestUserVerification,
   refreshToken,
   logoutUser,
+  updateUserProfile,
+  changePassword,
 } = require("../controllers/AuthController");
 const { authorizeUser } = require("../middlewares/authorizations");
 
@@ -36,5 +38,11 @@ router.post("/verify-user/:verifytoken", userVerification);
 
 //req verification
 router.post("/request-verification/:email", requestUserVerification);
+
+//update profile details
+router.put("/update-profile", authorizeUser, updateUserProfile);
+
+//change password
+router.put("/change-password", authorizeUser, changePassword);
 
 module.exports = router;
