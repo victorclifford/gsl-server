@@ -28,7 +28,7 @@ router.patch("/update-category", authorizeSuperAdmin, updateCategory);
 router.delete("category/:id", authorizeSuperAdmin, deleteCategory);
 
 //add product
-const uploadFields = upload.fields([{ name: "images", maxCount: 3 }]);
+const uploadFields = upload.fields([{ name: "images", maxCount: 5 }]);
 router.post("/add-product", authorizeSuperAdmin, uploadFields, addProducts);
 
 //update product(details)

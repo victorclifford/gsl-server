@@ -1,4 +1,3 @@
-const fs = require("fs");
 const mongoose = require("mongoose");
 const Product = require("../models/ProductModel");
 const ErrorResponse = require("../utils/errorResponse");
@@ -6,7 +5,7 @@ const config = require("../utils/config");
 const { slugify, generateRandomCode } = require("../utils/helpers.js");
 const { addProductSchema } = require("../utils/validationSchemas");
 const { firstLetterInStringToUppercase } = require("../utils/helpers");
-const { cloudinary } = require("../utils/cloudinary");
+const { cloudinary, uploadImage } = require("../utils/cloudinary");
 const CategoryModel = require("../models/CategoryModel");
 
 //get all products (admin / all)
@@ -69,7 +68,7 @@ exports.addProducts = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(category)) {
       return next(
-        new ErrorResponse("Invalid Category ID!", 400, "validationError")
+        new ErrorResponse("Invalid Category ID!", 400, "validationError"),
       );
     }
 
@@ -83,7 +82,7 @@ exports.addProducts = async (req, res, next) => {
 
     if (brand && brand.length > 50) {
       return next(
-        new ErrorResponse("Brand name is too long.", 400, "validationError")
+        new ErrorResponse("Brand name is too long.", 400, "validationError"),
       );
     }
 
@@ -92,53 +91,25 @@ exports.addProducts = async (req, res, next) => {
         new ErrorResponse(
           "Additional info is too long. it cannot be more than 300 characters",
           400,
-          "validationError"
-        )
+          "validationError",
+        ),
       );
     }
 
     //upload image and save url and id of image
     let images_uploads = [];
     try {
-      //upload for proprty images(field: 'images')
+      //upload for property images (field: 'images') — direct from memory buffer
       if (req?.files?.images?.length > 0) {
         console.log("handling files...");
         const resultsOne = await Promise.all(
-          req?.files?.images.map((file) =>
-            cloudinary.uploader.upload(file.path, {
-              folder: "goSolar",
-            })
-          )
+          req.files.images.map((file) =>
+            uploadImage(file, { folder: "goSolar" }),
+          ),
         );
 
-        //delete images from project folder storage(uploads/), to free space
-        req?.files?.images?.forEach((fi) => {
-          fs.unlink(fi.path, (err) => {
-            if (err) {
-              console.error("err deleting file in project folder::", err);
-            }
-            console.log(
-              `${fi.path} has been deleted after successful cloud upload`
-            );
-          });
-        });
-
-        images_uploads = resultsOne.map((img) => {
-          return {
-            url: img.secure_url,
-            public_id: img.public_id,
-          };
-        });
-
+        images_uploads = resultsOne;
         console.log({ images_uploads });
-      } else {
-        return next(
-          new ErrorResponse(
-            "Please provide at least one image for the Product",
-            400,
-            "validationError"
-          )
-        );
       }
     } catch (err) {
       return next(new ErrorResponse(err.message, 500, "uploadError"));
@@ -147,7 +118,8 @@ exports.addProducts = async (req, res, next) => {
     let parsedDatasheet = [];
     if (datasheet) {
       try {
-        parsedDatasheet = typeof datasheet === "string" ? JSON.parse(datasheet) : datasheet;
+        parsedDatasheet =
+          typeof datasheet === "string" ? JSON.parse(datasheet) : datasheet;
       } catch (e) {
         parsedDatasheet = [];
       }
@@ -167,7 +139,10 @@ exports.addProducts = async (req, res, next) => {
       images: images_uploads,
       outsideLocationDeliveryFee: Number(outsideLocationDeliveryFee) || 0,
       withinLocationDeliveryFee: Number(withinLocationDeliveryFee) || 0,
-      currentOffer: currentOffer && mongoose.Types.ObjectId.isValid(currentOffer) ? currentOffer : null,
+      currentOffer:
+        currentOffer && mongoose.Types.ObjectId.isValid(currentOffer)
+          ? currentOffer
+          : null,
       datasheet: parsedDatasheet,
       showDatasheet: showDatasheet === true || showDatasheet === "true",
     };
@@ -205,28 +180,28 @@ exports.updateProduct = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
+        new ErrorResponse("Invalid product ID!", 400, "validationError"),
       );
     }
 
     const productToBeUpdated = await Product.findById(productId);
     if (!productToBeUpdated) {
       return next(
-        new ErrorResponse("Product not found!", 404, "validationError")
+        new ErrorResponse("Product not found!", 404, "validationError"),
       );
     }
 
     if (category) {
       if (!mongoose.Types.ObjectId.isValid(category)) {
         return next(
-          new ErrorResponse("Invalid category ID!", 400, "validationError")
+          new ErrorResponse("Invalid category ID!", 400, "validationError"),
         );
       }
 
       const categoryToBeUpdated = await CategoryModel.findById(category);
       if (!categoryToBeUpdated) {
         return next(
-          new ErrorResponse("Category not found!", 404, "validationError")
+          new ErrorResponse("Category not found!", 404, "validationError"),
         );
       }
     }
@@ -237,8 +212,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "The field 'Name', cannot be more than 80 characters long and lesser than 3 characters",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -249,8 +224,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "The field 'Description', cannot be more than 350 characters long and lesser than 5 characters",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -261,8 +236,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "The field 'Additional Information', cannot be more than 300 characters long and lesser than 5 characters",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -274,8 +249,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "The field 'Brand', cannot be more than 50 characters long",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -286,8 +261,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "Price cannot be more than 'NGN 1000000000' or lesser than NGN 50",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -298,8 +273,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "Quantity In Stock cannot be more than '10000'",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -328,7 +303,7 @@ exports.updateProduct = async (req, res, next) => {
     const updatedProduct = await Product.findOneAndUpdate(
       { _id: productId },
       { ...cleanedData },
-      { new: true }
+      { new: true },
     );
     // console.log({ updatedProduct });
     if (updatedProduct) {
@@ -353,7 +328,7 @@ exports.updateProductImage = async (req, res, next) => {
     console.log("rq??", req.file);
     if (!req.file) {
       return next(
-        new ErrorResponse("Please add an image", 400, "validationError")
+        new ErrorResponse("Please add an image", 400, "validationError"),
       );
     }
 
@@ -361,7 +336,7 @@ exports.updateProductImage = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
+        new ErrorResponse("Invalid product ID!", 400, "validationError"),
       );
     }
 
@@ -369,36 +344,25 @@ exports.updateProductImage = async (req, res, next) => {
     const product = await Product.findById(productId);
     if (!product) {
       return next(
-        new ErrorResponse("Product not found", 404, "validationError")
+        new ErrorResponse("Product not found", 404, "validationError"),
       );
     }
 
     //find img to be updated
     const imgToUpdate = product.images.filter((im) => im.public_id == imgId);
-    console.log({ imgToUpdate });
 
     if (!imgToUpdate?.length) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) {
-          console.error("err deleting file in project folder::", err);
-        }
-        console.log(
-          `${req.file.path} has been deleted after successful cloud upload`
-        );
-      });
-
       return next(
-        new ErrorResponse("Image to update not found", 404, "validationError")
+        new ErrorResponse("Image to update not found", 404, "validationError"),
       );
     }
 
     const remainingImgs = product.images.filter(
-      (img) => img.public_id != imgId
+      (img) => img.public_id != imgId,
     );
-    console.log("remainingImgs::", remainingImgs);
 
-    //update img
-    const imgUpdate = await cloudinary.uploader.upload(req.file.path, {
+    //update img — upload directly from memory buffer
+    const imgUpdate = await uploadImage(req.file, {
       public_id: imgId,
       overwrite: true,
       invalidate: true,
@@ -406,19 +370,10 @@ exports.updateProductImage = async (req, res, next) => {
 
     console.log({ imgUpdate });
 
-    if (imgUpdate?.secure_url && imgUpdate?.public_id) {
+    if (imgUpdate?.url && imgUpdate?.public_id) {
       remainingImgs.push({
-        url: imgUpdate.secure_url,
+        url: imgUpdate.url,
         public_id: imgUpdate.public_id,
-      });
-
-      fs.unlink(req.file.path, (err) => {
-        if (err) {
-          console.error("err deleting file in project folder::", err);
-        }
-        console.log(
-          `${req.file.path} has been deleted after successful cloud upload`
-        );
       });
 
       product.images = remainingImgs;
@@ -434,8 +389,8 @@ exports.updateProductImage = async (req, res, next) => {
         new ErrorResponse(
           "An unexpected error occured while trying to update your image",
           500,
-          "validationError"
-        )
+          "validationError",
+        ),
       );
     }
   } catch (error) {
@@ -449,7 +404,7 @@ exports.getProduct = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(productid)) {
       return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
+        new ErrorResponse("Invalid product ID!", 400, "validationError"),
       );
     }
 
@@ -480,7 +435,7 @@ exports.deleteProduct = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(productid)) {
       return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
+        new ErrorResponse("Invalid product ID!", 400, "validationError"),
       );
     }
 
