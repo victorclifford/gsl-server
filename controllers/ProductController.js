@@ -7,20 +7,45 @@ const { addProductSchema } = require("../utils/validationSchemas");
 const { firstLetterInStringToUppercase } = require("../utils/helpers");
 const { cloudinary, uploadImage } = require("../utils/cloudinary");
 const CategoryModel = require("../models/CategoryModel");
+const paginate = require("../utils/paginate");
 
 //get all products (admin / all)
 exports.getAllProducts = async (req, res, next) => {
   try {
-    const products = await Product.find({ isDeleted: false })
-      .populate(["category", "currentOffer"])
-      .sort({
-        createdAt: -1,
-      })
-      .exec();
+    const { page, limit, q, status, category } = req.query;
+
+    const query = { isDeleted: false };
+
+    if (q) {
+      query.name = { $regex: q, $options: "i" };
+    }
+
+    if (status && status !== "All") {
+      query.isPublished = status === "published";
+    }
+
+    if (category && category !== "All") {
+      const subcategories = await CategoryModel.find({ parent: category, isDeleted: false }).select("_id");
+      const categoryIds = [category, ...subcategories.map(sub => sub._id)];
+      query.category = { $in: categoryIds };
+    }
+
+    const result = await paginate(
+      Product,
+      query,
+      {
+        page: Number(page) || 1,
+        limit: Number(limit) || 10,
+        populate: ["category", "currentOffer"],
+        sort: { createdAt: -1 }
+      }
+    );
+
     return res.status(200).json({
       success: true,
       message: "Products fetch successful",
-      products,
+      products: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     return next(error);
@@ -30,16 +55,129 @@ exports.getAllProducts = async (req, res, next) => {
 //get published products (customer storefront)
 exports.getPublishedProducts = async (req, res, next) => {
   try {
-    const products = await Product.find({ isDeleted: false, isPublished: true })
-      .populate(["category", "currentOffer"])
-      .sort({
-        createdAt: -1,
-      })
-      .exec();
+    const { page, limit, q, category, sort, minPrice, maxPrice, brands } = req.query;
+
+    const query = { isDeleted: false, isPublished: true };
+
+    if (q) {
+      query.name = { $regex: q, $options: "i" };
+    }
+
+    if (category && category !== "All") {
+      const subcategories = await CategoryModel.find({ parent: category, isDeleted: false }).select("_id");
+      const categoryIds = [category, ...subcategories.map(sub => sub._id)];
+      query.category = { $in: categoryIds };
+    }
+
+    // Get available brands matching query (before price and brand filters are applied)
+    const availableBrands = await Product.distinct("brand", query);
+
+    // Apply price range filter (matching active price: discountPrice if set, otherwise regular price)
+    if (minPrice || maxPrice) {
+      const min = Number(minPrice) || 0;
+      const max = Number(maxPrice) || 999999999;
+
+      query.$or = [
+        {
+          discountPrice: { $gt: 0, $gte: min, $lte: max }
+        },
+        {
+          $and: [
+            { $or: [{ discountPrice: { $exists: false } }, { discountPrice: { $lte: 0 } }] },
+            { price: { $gte: min, $lte: max } }
+          ]
+        }
+      ];
+    }
+
+    // Apply brand filter (comma separated list)
+    if (brands) {
+      const brandList = brands.split(",").map(b => b.trim()).filter(Boolean);
+      if (brandList.length > 0) {
+        query.brand = { $in: brandList };
+      }
+    }
+
+    let sortOption = { createdAt: -1 };
+    if (sort) {
+      switch (sort) {
+        case "price-asc":
+          sortOption = { price: 1 };
+          break;
+        case "price-desc":
+          sortOption = { price: -1 };
+          break;
+        case "name-asc":
+          sortOption = { name: 1 };
+          break;
+        case "name-desc":
+          sortOption = { name: -1 };
+          break;
+        case "newest":
+        default:
+          sortOption = { createdAt: -1 };
+          break;
+      }
+    }
+
+    const result = await paginate(
+      Product,
+      query,
+      {
+        page: Number(page) || 1,
+        limit: Number(limit) || 12,
+        populate: ["category", "currentOffer"],
+        sort: sortOption
+      }
+    );
+
     return res.status(200).json({
       success: true,
       message: "Published products fetched successfully",
-      products,
+      products: result.data,
+      pagination: result.pagination,
+      brands: availableBrands,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+//get products by category
+exports.getProductsByCategory = async (req, res, next) => {
+  try {
+    const { categoryid } = req.params;
+    const { page, limit, q, status } = req.query;
+
+    const subcategories = await CategoryModel.find({ parent: categoryid, isDeleted: false }).select("_id");
+    const categoryIds = [categoryid, ...subcategories.map(sub => sub._id)];
+
+    const query = { category: { $in: categoryIds }, isDeleted: false };
+
+    if (q) {
+      query.name = { $regex: q, $options: "i" };
+    }
+
+    if (status && status !== "All") {
+      query.isPublished = status === "published";
+    }
+
+    const result = await paginate(
+      Product,
+      query,
+      {
+        page: Number(page) || 1,
+        limit: Number(limit) || 10,
+        populate: ["category", "currentOffer"],
+        sort: { createdAt: -1 }
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Category products fetched successfully",
+      products: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     return next(error);
@@ -348,46 +486,69 @@ exports.updateProductImage = async (req, res, next) => {
       );
     }
 
-    //find img to be updated
-    const imgToUpdate = product.images.filter((im) => im.public_id == imgId);
+    // If an imgId is provided, we try to update that specific image in-place
+    if (imgId && imgId !== "new") {
+      const imgToUpdate = product.images.filter((im) => im.public_id == imgId);
+      if (imgToUpdate?.length > 0) {
+        const remainingImgs = product.images.filter(
+          (img) => img.public_id != imgId,
+        );
 
-    if (!imgToUpdate?.length) {
+        //update img — upload directly from memory buffer
+        const imgUpdate = await uploadImage(req.file, {
+          public_id: imgId,
+          overwrite: true,
+          invalidate: true,
+        });
+
+        console.log({ imgUpdate });
+
+        if (imgUpdate?.url && imgUpdate?.public_id) {
+          remainingImgs.push({
+            url: imgUpdate.url,
+            public_id: imgUpdate.public_id,
+          });
+
+          product.images = remainingImgs;
+          await product.save();
+
+          return res.status(200).json({
+            success: true,
+            message: "product image updated successfully",
+            product,
+          });
+        }
+      }
+    }
+
+    // Otherwise, we append a new image (upload as new)
+    if (product.images.length >= 5) {
       return next(
-        new ErrorResponse("Image to update not found", 404, "validationError"),
+        new ErrorResponse("Product already has the maximum of 5 images.", 400, "validationError")
       );
     }
 
-    const remainingImgs = product.images.filter(
-      (img) => img.public_id != imgId,
-    );
-
-    //update img — upload directly from memory buffer
-    const imgUpdate = await uploadImage(req.file, {
-      public_id: imgId,
-      overwrite: true,
-      invalidate: true,
+    const newImg = await uploadImage(req.file, {
+      folder: "goSolar",
     });
 
-    console.log({ imgUpdate });
-
-    if (imgUpdate?.url && imgUpdate?.public_id) {
-      remainingImgs.push({
-        url: imgUpdate.url,
-        public_id: imgUpdate.public_id,
+    if (newImg?.url && newImg?.public_id) {
+      product.images.push({
+        url: newImg.url,
+        public_id: newImg.public_id,
       });
 
-      product.images = remainingImgs;
       await product.save();
 
       return res.status(200).json({
         success: true,
-        message: "product image updated successfully",
+        message: "Image added to product successfully",
         product,
       });
     } else {
       return next(
         new ErrorResponse(
-          "An unexpected error occured while trying to update your image",
+          "An unexpected error occured while trying to upload your image",
           500,
           "validationError",
         ),

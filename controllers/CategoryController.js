@@ -5,6 +5,7 @@ const config = require("../utils/config");
 const { slugify } = require("../utils/helpers.js");
 const { categoryValidationSchema } = require("../utils/validationSchemas");
 const { firstLetterInStringToUppercase } = require("../utils/helpers");
+const paginate = require("../utils/paginate");
 
 //create category
 exports.addCategory = async (req, res, next) => {
@@ -61,13 +62,40 @@ exports.addCategory = async (req, res, next) => {
 //get all categories (flat list)
 exports.getAllCategories = async (req, res, next) => {
   try {
-    const categories = await Category.find({ isDeleted: false })
-      .sort({ sortOrder: 1, createdAt: -1 })
-      .populate("parent", "name slug");
+    const { page, limit, q, parent } = req.query;
+
+    const query = { isDeleted: false };
+
+    if (q) {
+      query.name = { $regex: q, $options: "i" };
+    }
+
+    if (parent !== undefined) {
+      if (parent === "null" || parent === "none") {
+        query.parent = null;
+      } else if (parent === "any") {
+        query.parent = { $ne: null };
+      } else if (mongoose.Types.ObjectId.isValid(parent)) {
+        query.parent = parent;
+      }
+    }
+
+    const result = await paginate(
+      Category,
+      query,
+      {
+        page: Number(page) || 1,
+        limit: Number(limit) || 10,
+        populate: { path: "parent", select: "name slug" },
+        sort: { sortOrder: 1, createdAt: -1 }
+      }
+    );
+
     return res.status(200).json({
       success: true,
       message: "Categories fetch successful",
-      categories,
+      categories: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     return next(error);

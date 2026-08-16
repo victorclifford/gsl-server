@@ -53,7 +53,7 @@ const OrderModel = new Schema(
     //recieved: package has been recieved by buyer
     trackingStatus: {
       type: String,
-      enum: ["Processing", "Delivered", "Recieved"],
+      enum: ["Processing", "Delivered", "Received", "Recieved"],
       default: "Processing",
     },
 

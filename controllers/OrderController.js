@@ -313,11 +313,41 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
 
 exports.getAllOrders = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, q, status } = req.query;
 
-    const { data: orders, pagination } = await paginate(OrderModel, {}, {
-      page,
-      limit,
+    const query = {};
+
+    if (status && status !== "All") {
+      if (status.toLowerCase() === "received") {
+        query.trackingStatus = { $in: ["Received", "Recieved"] };
+      } else {
+        query.trackingStatus = { $regex: new RegExp(`^${status}$`, "i") };
+      }
+    }
+
+    if (q) {
+      const users = await UserModel.find({
+        $or: [
+          { firstname: { $regex: q, $options: "i" } },
+          { lastname: { $regex: q, $options: "i" } }
+        ]
+      }).select("_id");
+      const userIds = users.map(u => u._id);
+
+      const trackingIdsDoc = await TrackingIdModel.find({
+        tracking_id: { $regex: q, $options: "i" }
+      }).select("_id");
+      const trackingIds = trackingIdsDoc.map(t => t._id);
+
+      query.$or = [
+        { user: { $in: userIds } },
+        { trackingId: { $in: trackingIds } }
+      ];
+    }
+
+    const { data: orders, pagination } = await paginate(OrderModel, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
       sort: { createdAt: -1 },
       populate: ["user", "trackingId", "products.product"]
     });
