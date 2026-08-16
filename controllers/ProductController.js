@@ -17,7 +17,10 @@ exports.getAllProducts = async (req, res, next) => {
     const query = { isDeleted: false };
 
     if (q) {
-      query.name = { $regex: q, $options: "i" };
+      query.$or = [
+        { name: { $regex: q, $options: "i" } },
+        { productCode: { $regex: q, $options: "i" } },
+      ];
     }
 
     if (status && status !== "All") {
@@ -25,21 +28,20 @@ exports.getAllProducts = async (req, res, next) => {
     }
 
     if (category && category !== "All") {
-      const subcategories = await CategoryModel.find({ parent: category, isDeleted: false }).select("_id");
-      const categoryIds = [category, ...subcategories.map(sub => sub._id)];
+      const subcategories = await CategoryModel.find({
+        parent: category,
+        isDeleted: false,
+      }).select("_id");
+      const categoryIds = [category, ...subcategories.map((sub) => sub._id)];
       query.category = { $in: categoryIds };
     }
 
-    const result = await paginate(
-      Product,
-      query,
-      {
-        page: Number(page) || 1,
-        limit: Number(limit) || 10,
-        populate: ["category", "currentOffer"],
-        sort: { createdAt: -1 }
-      }
-    );
+    const result = await paginate(Product, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      populate: ["category", "currentOffer"],
+      sort: { createdAt: -1 },
+    });
 
     return res.status(200).json({
       success: true,
@@ -55,17 +57,24 @@ exports.getAllProducts = async (req, res, next) => {
 //get published products (customer storefront)
 exports.getPublishedProducts = async (req, res, next) => {
   try {
-    const { page, limit, q, category, sort, minPrice, maxPrice, brands } = req.query;
+    const { page, limit, q, category, sort, minPrice, maxPrice, brands } =
+      req.query;
 
     const query = { isDeleted: false, isPublished: true };
 
     if (q) {
-      query.name = { $regex: q, $options: "i" };
+      query.$or = [
+        { name: { $regex: q, $options: "i" } },
+        { productCode: { $regex: q, $options: "i" } },
+      ];
     }
 
     if (category && category !== "All") {
-      const subcategories = await CategoryModel.find({ parent: category, isDeleted: false }).select("_id");
-      const categoryIds = [category, ...subcategories.map(sub => sub._id)];
+      const subcategories = await CategoryModel.find({
+        parent: category,
+        isDeleted: false,
+      }).select("_id");
+      const categoryIds = [category, ...subcategories.map((sub) => sub._id)];
       query.category = { $in: categoryIds };
     }
 
@@ -79,20 +88,28 @@ exports.getPublishedProducts = async (req, res, next) => {
 
       query.$or = [
         {
-          discountPrice: { $gt: 0, $gte: min, $lte: max }
+          discountPrice: { $gt: 0, $gte: min, $lte: max },
         },
         {
           $and: [
-            { $or: [{ discountPrice: { $exists: false } }, { discountPrice: { $lte: 0 } }] },
-            { price: { $gte: min, $lte: max } }
-          ]
-        }
+            {
+              $or: [
+                { discountPrice: { $exists: false } },
+                { discountPrice: { $lte: 0 } },
+              ],
+            },
+            { price: { $gte: min, $lte: max } },
+          ],
+        },
       ];
     }
 
     // Apply brand filter (comma separated list)
     if (brands) {
-      const brandList = brands.split(",").map(b => b.trim()).filter(Boolean);
+      const brandList = brands
+        .split(",")
+        .map((b) => b.trim())
+        .filter(Boolean);
       if (brandList.length > 0) {
         query.brand = { $in: brandList };
       }
@@ -120,16 +137,12 @@ exports.getPublishedProducts = async (req, res, next) => {
       }
     }
 
-    const result = await paginate(
-      Product,
-      query,
-      {
-        page: Number(page) || 1,
-        limit: Number(limit) || 12,
-        populate: ["category", "currentOffer"],
-        sort: sortOption
-      }
-    );
+    const result = await paginate(Product, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 12,
+      populate: ["category", "currentOffer"],
+      sort: sortOption,
+    });
 
     return res.status(200).json({
       success: true,
@@ -149,8 +162,11 @@ exports.getProductsByCategory = async (req, res, next) => {
     const { categoryid } = req.params;
     const { page, limit, q, status } = req.query;
 
-    const subcategories = await CategoryModel.find({ parent: categoryid, isDeleted: false }).select("_id");
-    const categoryIds = [categoryid, ...subcategories.map(sub => sub._id)];
+    const subcategories = await CategoryModel.find({
+      parent: categoryid,
+      isDeleted: false,
+    }).select("_id");
+    const categoryIds = [categoryid, ...subcategories.map((sub) => sub._id)];
 
     const query = { category: { $in: categoryIds }, isDeleted: false };
 
@@ -162,16 +178,12 @@ exports.getProductsByCategory = async (req, res, next) => {
       query.isPublished = status === "published";
     }
 
-    const result = await paginate(
-      Product,
-      query,
-      {
-        page: Number(page) || 1,
-        limit: Number(limit) || 10,
-        populate: ["category", "currentOffer"],
-        sort: { createdAt: -1 }
-      }
-    );
+    const result = await paginate(Product, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      populate: ["category", "currentOffer"],
+      sort: { createdAt: -1 },
+    });
 
     return res.status(200).json({
       success: true,
@@ -242,7 +254,7 @@ exports.addProducts = async (req, res, next) => {
         console.log("handling files...");
         const resultsOne = await Promise.all(
           req.files.images.map((file) =>
-            uploadImage(file, { folder: "goSolar" }),
+            uploadImage(file, { folder: "goSolar/products" }),
           ),
         );
 
@@ -524,12 +536,16 @@ exports.updateProductImage = async (req, res, next) => {
     // Otherwise, we append a new image (upload as new)
     if (product.images.length >= 5) {
       return next(
-        new ErrorResponse("Product already has the maximum of 5 images.", 400, "validationError")
+        new ErrorResponse(
+          "Product already has the maximum of 5 images.",
+          400,
+          "validationError",
+        ),
       );
     }
 
     const newImg = await uploadImage(req.file, {
-      folder: "goSolar",
+      folder: "goSolar/products",
     });
 
     if (newImg?.url && newImg?.public_id) {

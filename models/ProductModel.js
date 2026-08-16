@@ -91,9 +91,23 @@ const ProductSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    // product code for lookup and search
+    productCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
   },
   { timestamps: true }
 );
+
+// Auto-generate product code from MongoDB ObjectId if missing
+ProductSchema.pre("save", function (next) {
+  if (!this.productCode) {
+    this.productCode = "GSL-" + this._id.toString().slice(-6).toUpperCase();
+  }
+  next();
+});
 
 // Enforce subcategory assignment when categories have children
 ProductSchema.pre("save", async function (next) {
