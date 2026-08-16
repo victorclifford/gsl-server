@@ -45,10 +45,7 @@ const packageSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    image: {
-      type: String,
-      default: "/images/bg/hero-bg.jpg",
-    },
+
     description: {
       type: String,
       required: [true, "Package description is required"],
@@ -63,13 +60,19 @@ const packageSchema = new mongoose.Schema(
     },
     constituents: [
       {
-        item: { type: String, required: true },
-        qty: { type: Number, default: 1 },
-        spec: { type: String },
+        product: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Product",
+          required: true,
+        },
+        qty: {
+          type: Number,
+          default: 1,
+        },
       },
     ],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Auto-generate slug before saving

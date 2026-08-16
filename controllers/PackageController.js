@@ -19,7 +19,9 @@ exports.getAllPackages = async (req, res, next) => {
       filter.inStock = inStock === "true";
     }
 
-    const packages = await PackageModel.find(filter).sort({ capacityKva: 1 });
+    const packages = await PackageModel.find(filter)
+      .populate("constituents.product")
+      .sort({ capacityKva: 1 });
 
     return res.status(200).json({
       success: true,
@@ -40,9 +42,9 @@ exports.getPackage = async (req, res, next) => {
     let pkg;
 
     if (identifier.match(/^[0-9a-fA-F]{24}$/)) {
-      pkg = await PackageModel.findById(identifier);
+      pkg = await PackageModel.findById(identifier).populate("constituents.product");
     } else {
-      pkg = await PackageModel.findOne({ slug: identifier });
+      pkg = await PackageModel.findOne({ slug: identifier }).populate("constituents.product");
     }
 
     if (!pkg) {
