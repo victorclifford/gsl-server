@@ -638,6 +638,34 @@ const changePassword = async (req, res, next) => {
   }
 };
 
+
+//---------------- GET CURRENT USER (me) ----------------
+const getMe = async (req, res, next) => {
+  try {
+    const user = req.user;
+    const sanitizedUser = {
+      _id: user._id,
+      firstname: user.firstname,
+      lastname: user.lastname,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
+      isAdmin: Boolean(user.isAdmin),
+      isSuperAdmin: Boolean(user.isSuperAdmin),
+      is_verified: Boolean(user.is_verified),
+      lastLogin: user.lastLogin,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    return res.status(200).json({
+      success: true,
+      user: sanitizedUser,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   signupUser,
   loginUser,
@@ -649,4 +677,5 @@ module.exports = {
   logoutUser,
   updateUserProfile,
   changePassword,
+  getMe,
 };

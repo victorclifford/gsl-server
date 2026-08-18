@@ -22,25 +22,25 @@ const AdminController = require("../controllers/AdminController");
 const router = express.Router();
 
 // create a category
-router.post("/create-category", authorizeSuperAdmin, addCategory);
+router.post("/create-category", authorizeAdmin, addCategory);
 
-router.patch("/update-category", authorizeSuperAdmin, updateCategory);
+router.patch("/update-category", authorizeAdmin, updateCategory);
 
-router.delete("category/:id", authorizeSuperAdmin, deleteCategory);
+router.delete("category/:id", authorizeAdmin, deleteCategory);
 
 //add product
 const uploadFields = upload.fields([{ name: "images", maxCount: 5 }]);
-router.post("/add-product", authorizeSuperAdmin, uploadFields, addProducts);
+router.post("/add-product", authorizeAdmin, uploadFields, addProducts);
 
 //update product(details)
-router.patch("/update-product-details", updateProduct);
+router.patch("/update-product-details", authorizeAdmin, updateProduct);
 
 router.patch("/add-offer-to-products", authorizeAdmin, updateProductsOffer);
 
 //update product(img)
 router.patch(
   "/update-product-image",
-  authorizeSuperAdmin,
+  authorizeAdmin,
   upload.single("updateImg"),
   updateProductImage,
 );
@@ -48,7 +48,7 @@ router.patch(
 //add blog
 router.post(
   "/add-blog",
-  authorizeSuperAdmin,
+  authorizeAdmin,
   upload.single("blogImage"),
   BlogController.createBlog,
 );
@@ -56,7 +56,7 @@ router.post(
 //update blog
 router.patch(
   "/update-blog",
-  authorizeSuperAdmin,
+  authorizeAdmin,
   upload.single("updateImage"),
   BlogController.updateBlog,
 );
@@ -65,11 +65,15 @@ router.get("/all-orders", authorizeAdmin, OrderController.getAllOrders);
 
 router.get("/users", authorizeAdmin, AdminController.getUsers);
 
-router.post("/create-account", authorizeAdmin, AdminController.createAccount);
+router.post(
+  "/create-account",
+  authorizeSuperAdmin,
+  AdminController.createAccount,
+);
 
 router.get("/users/:userid", authorizeAdmin, AdminController.getUser);
 
-router.get("/admins", authorizeAdmin, AdminController.getAdminUsers);
+router.get("/admins", authorizeSuperAdmin, AdminController.getAdminUsers);
 
 router.patch(
   "/users/:userid/role",
