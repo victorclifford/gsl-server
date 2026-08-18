@@ -10,6 +10,7 @@ const {
   logoutUser,
   updateUserProfile,
   changePassword,
+  getMe,
 } = require("../controllers/AuthController");
 const { authorizeUser } = require("../middlewares/authorizations");
 
@@ -44,5 +45,8 @@ router.put("/update-profile", authorizeUser, updateUserProfile);
 
 //change password
 router.put("/change-password", authorizeUser, changePassword);
+
+//get current logged-in user
+router.get("/me", authorizeUser, getMe);
 
 module.exports = router;
