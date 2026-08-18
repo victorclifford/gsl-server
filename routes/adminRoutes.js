@@ -13,6 +13,7 @@ const {
   addProducts,
   updateProduct,
   updateProductImage,
+  updateProductsOffer,
 } = require("../controllers/ProductController.js");
 const BlogController = require("../controllers/BlogController");
 const OrderController = require("../controllers/OrderController");
@@ -34,12 +35,14 @@ router.post("/add-product", authorizeSuperAdmin, uploadFields, addProducts);
 //update product(details)
 router.patch("/update-product-details", updateProduct);
 
+router.patch("/add-offer-to-products", authorizeAdmin, updateProductsOffer);
+
 //update product(img)
 router.patch(
   "/update-product-image",
   authorizeSuperAdmin,
   upload.single("updateImg"),
-  updateProductImage
+  updateProductImage,
 );
 
 //add blog
@@ -47,7 +50,7 @@ router.post(
   "/add-blog",
   authorizeSuperAdmin,
   upload.single("blogImage"),
-  BlogController.createBlog
+  BlogController.createBlog,
 );
 
 //update blog
@@ -55,7 +58,7 @@ router.patch(
   "/update-blog",
   authorizeSuperAdmin,
   upload.single("updateImage"),
-  BlogController.updateBlog
+  BlogController.updateBlog,
 );
 
 router.get("/all-orders", authorizeAdmin, OrderController.getAllOrders);
@@ -71,13 +74,13 @@ router.get("/admins", authorizeAdmin, AdminController.getAdminUsers);
 router.patch(
   "/users/:userid/role",
   authorizeSuperAdmin,
-  AdminController.updateUserRole
+  AdminController.updateUserRole,
 );
 
 router.get(
   "/dashboard-stats",
   authorizeAdmin,
-  AdminController.getDashboardStats
+  AdminController.getDashboardStats,
 );
 
 module.exports = router;

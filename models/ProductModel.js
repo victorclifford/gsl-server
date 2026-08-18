@@ -81,8 +81,8 @@ const ProductSchema = new Schema(
     // technical specification table shown on product detail page
     datasheet: [
       {
-        key: { type: String, required: true },   // e.g. "Capacity"
-        value: { type: String, required: true },  // e.g. "200Ah"
+        key: { type: String, required: true }, // e.g. "Capacity"
+        value: { type: String, required: true }, // e.g. "200Ah"
         _id: false,
       },
     ],
@@ -98,7 +98,7 @@ const ProductSchema = new Schema(
       sparse: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Auto-generate product code from MongoDB ObjectId if missing
@@ -123,12 +123,15 @@ ProductSchema.pre("save", async function (next) {
 
     // If top-level category has subcategories, advise assigning to a subcategory
     if (!cat.parent) {
-      const hasChildren = await Category.exists({ parent: cat._id, isDeleted: false });
+      const hasChildren = await Category.exists({
+        parent: cat._id,
+        isDeleted: false,
+      });
       if (hasChildren) {
         return next(
           new Error(
-            `"${cat.name}" is a top-level category. Please select one of its specific subcategories.`
-          )
+            `"${cat.name}" is a top-level category. Please select one of its specific subcategories.`,
+          ),
         );
       }
     }
@@ -139,4 +142,3 @@ ProductSchema.pre("save", async function (next) {
 });
 
 module.exports = mongoose.model("Product", ProductSchema);
-

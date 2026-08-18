@@ -39,7 +39,7 @@ const offerSchema = new mongoose.Schema(
       default: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const OfferModel =
