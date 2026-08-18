@@ -11,6 +11,7 @@ const ProductModel = require("../models/ProductModel");
 const TrackingIdModel = require("../models/TrackingId");
 const PaystackAPI = require("../utils/paystack");
 const { sendEmail } = require("../utils/sendEmail");
+const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
 const UserModel = require("../models/UserModel");
 const paginate = require("../utils/paginate");
 

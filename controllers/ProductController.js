@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Product = require("../models/ProductModel");
+const OfferModel = require("../models/OfferModel");
 const ErrorResponse = require("../utils/errorResponse");
 const config = require("../utils/config");
 const { slugify, generateRandomCode } = require("../utils/helpers.js");
@@ -222,8 +223,6 @@ exports.addProducts = async (req, res, next) => {
       );
     }
 
-    let productData = {};
-
     //validate user input
     try {
       await addProductSchema.validate(req.body, { abortEarly: true });
@@ -265,8 +264,6 @@ exports.addProducts = async (req, res, next) => {
           ),
         );
       }
-
-      productData.currentOffer = currentOffer;
     }
 
     //upload image and save url and id of image
@@ -299,7 +296,7 @@ exports.addProducts = async (req, res, next) => {
     }
 
     const productData = {
-      name: name.toUpperCase(),
+      name: name,
       slug: `${slugify(name)}-${generateRandomCode(4)}`,
       description,
       additionalInfo,
@@ -682,12 +679,10 @@ exports.updateProductsOffer = async (req, res, next) => {
       _id: { $in: products },
     }).lean();
 
-    res
-      .status(200)
-      .json({
-        message: "Products offer updated successfully",
-        products: updatedProducts,
-      });
+    res.status(200).json({
+      message: "Products offer updated successfully",
+      products: updatedProducts,
+    });
   } catch (error) {
     console.error(error);
     return next(new ErrorResponse("Internal server error", 500, "serverError"));

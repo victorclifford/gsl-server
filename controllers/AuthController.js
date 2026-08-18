@@ -127,13 +127,14 @@ const signupUser = async (req, res, next) => {
     const tokenWithId = `${verificationToken}${user._id}`;
     const verificationUrl = `${config.HOMEPAGE}/auth/verify/${tokenWithId}`;
 
-    sendEmail({
-      from: config.EMAIL_FROM,
-      to: user.email,
-      name: user.firstname,
+    sendBrevoEmail({
+      to: [{ email: user.email, name: user.firstname }],
       subject: "Activate Your Go Solar Account",
-      verificationUrl,
-      template: "welcome",
+      templateName: "welcome",
+      parameters: {
+        verificationUrl,
+        SupportAgentName: "Jessy",
+      },
     });
 
     // 6. Return a simple success — no tokens until the account is verified
