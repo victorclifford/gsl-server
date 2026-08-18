@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@sendgrid/mail": "^8.1.2",
+    "axios": "^1.7.3",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.1.0",
     "cors": "^2.8.5",

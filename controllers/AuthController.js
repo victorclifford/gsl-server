@@ -4,6 +4,7 @@ const Auth = require("../models/AuthModel");
 const ErrorResponse = require("../utils/errorResponse");
 const config = require("../utils/config");
 const { sendEmail } = require("../utils/sendEmail");
+const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
 const sendMail2 = require("../utils/sendEmail2");
 const { signupValidationSchema } = require("../utils/validationSchemas");
 const jwt = require("jsonwebtoken");
@@ -106,7 +107,10 @@ const signupUser = async (req, res, next) => {
 
     // 5. Generate verification token and save to Auth document
     const verificationToken = crypto.randomBytes(12).toString("hex");
-    const salt = process.env.HASH_SALT || config.JWT_SECRET || "gosolar_verification_salt_2026";
+    const salt =
+      process.env.HASH_SALT ||
+      config.JWT_SECRET ||
+      "gosolar_verification_salt_2026";
     const hashedToken = crypto
       .createHmac("sha256", salt)
       .update(verificationToken)
@@ -123,13 +127,14 @@ const signupUser = async (req, res, next) => {
     const tokenWithId = `${verificationToken}${user._id}`;
     const verificationUrl = `${config.HOMEPAGE}/auth/verify/${tokenWithId}`;
 
-    sendEmail({
-      from: config.EMAIL_FROM,
-      to: user.email,
-      name: user.firstname,
+    sendBrevoEmail({
+      to: [{ email: user.email, name: user.firstname }],
       subject: "Activate Your Go Solar Account",
-      verificationUrl,
-      template: "welcome",
+      templateName: "welcome",
+      parameters: {
+        verificationUrl,
+        SupportAgentName: "Jessy",
+      },
     });
 
     // 6. Return a simple success — no tokens until the account is verified
@@ -222,13 +227,23 @@ const forgotPassword = async (req, res, next) => {
     console.log(`sending reset password email to ${email}...`);
 
     try {
-      sendEmail({
-        from: config.EMAIL_FROM,
-        to: user.email,
-        name: user.firstname,
+      // sendEmail({
+      //   from: config.EMAIL_FROM,
+      //   to: user.email,
+      //   name: user.firstname,
+      //   subject: "Forgot Your Password?",
+      //   resetURL,
+      //   template: "forget-password",
+      // });
+      sendBrevoEmail({
+        // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+        to: [{ email: user.email, name: user.firstname }],
         subject: "Forgot Your Password?",
-        resetURL,
-        template: "forget-password",
+        templateName: "forget-password",
+        parameters: {
+          resetURL,
+          SupportAgentName: "Jessy",
+        },
       });
     } catch (e) {
       // Clear fields on email failure
@@ -272,7 +287,10 @@ const requestUserVerification = async (req, res, next) => {
 
     // Generate verification token and save to Auth document
     const verificationToken = crypto.randomBytes(12).toString("hex");
-    const salt = process.env.HASH_SALT || config.JWT_SECRET || "gosolar_verification_salt_2026";
+    const salt =
+      process.env.HASH_SALT ||
+      config.JWT_SECRET ||
+      "gosolar_verification_salt_2026";
     const hashedToken = crypto
       .createHmac("sha256", salt)
       .update(verificationToken)
@@ -290,13 +308,24 @@ const requestUserVerification = async (req, res, next) => {
     const host = config.HOMEPAGE;
     const verificationUrl = `${host}/auth/verify/${tokenWithId}`;
 
-    sendEmail({
-      from: config.EMAIL_FROM,
-      to: user.email,
-      name: user.firstname,
+    // sendEmail({
+    //   from: config.EMAIL_FROM,
+    //   to: user.email,
+    //   name: user.firstname,
+    //   subject: "Activate Your Go Solar Account",
+    //   verificationUrl,
+    //   template: "welcome",
+    // });
+
+    sendBrevoEmail({
+      // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+      to: [{ email: user.email, name: user.firstname }],
       subject: "Activate Your Go Solar Account",
-      verificationUrl,
-      template: "welcome",
+      templateName: "welcome",
+      parameters: {
+        verificationUrl,
+        SupportAgentName: "Jessy",
+      },
     });
 
     const message = `A verification link has been sent to ${user.email}`;
@@ -320,7 +349,10 @@ const userVerification = async (req, res, next) => {
       // New format: unhashed token (24 chars) + userId (24 chars)
       const plainToken = verifytoken.slice(0, 24);
       const userId = verifytoken.slice(24);
-      const salt = process.env.HASH_SALT || config.JWT_SECRET || "gosolar_verification_salt_2026";
+      const salt =
+        process.env.HASH_SALT ||
+        config.JWT_SECRET ||
+        "gosolar_verification_salt_2026";
       const hashedToken = crypto
         .createHmac("sha256", salt)
         .update(plainToken)
@@ -336,7 +368,10 @@ const userVerification = async (req, res, next) => {
       query = { verification_token: verifytoken };
     } else if (verifytoken && verifytoken.length === 24) {
       // Unhashed token only
-      const salt = process.env.HASH_SALT || config.JWT_SECRET || "gosolar_verification_salt_2026";
+      const salt =
+        process.env.HASH_SALT ||
+        config.JWT_SECRET ||
+        "gosolar_verification_salt_2026";
       const hashedToken = crypto
         .createHmac("sha256", salt)
         .update(verifytoken)
@@ -349,9 +384,13 @@ const userVerification = async (req, res, next) => {
     // Find Auth record
     const auth = await Auth.findOne(query);
 
-    if (!auth || !auth.verificationExpiry || auth.verificationExpiry.getTime() <= Date.now()) {
+    if (
+      !auth ||
+      !auth.verificationExpiry ||
+      auth.verificationExpiry.getTime() <= Date.now()
+    ) {
       return next(
-        new ErrorResponse("Invalid or expired verification code", 401)
+        new ErrorResponse("Invalid or expired verification code", 401),
       );
     }
 
@@ -421,12 +460,22 @@ const resetPassword = async (req, res, next) => {
     await auth.save();
 
     //send mail
-    sendEmail({
-      from: config.EMAIL_FROM,
-      to: user.email,
-      name: user.firstname,
+    // sendEmail({
+    //   from: config.EMAIL_FROM,
+    //   to: user.email,
+    //   name: user.firstname,
+    //   subject: "Password Reset Successful",
+    //   template: "password-reset-success",
+    // });
+
+    sendBrevoEmail({
+      // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
+      to: [{ email: user.email, name: user.firstname }],
       subject: "Password Reset Successful",
-      template: "password-reset-success",
+      templateName: "password-reset-success",
+      parameters: {
+        SupportAgentName: "Jessy",
+      },
     });
 
     return res.status(201).json({
@@ -461,12 +510,7 @@ const refreshToken = async (req, res, next) => {
 
     const user = await User.findById(decoded.id);
     if (!user) {
-      return next(
-        new ErrorResponse(
-          "User not found.",
-          404,
-        ),
-      );
+      return next(new ErrorResponse("User not found.", 404));
     }
 
     const newAccessToken = await user.getSignedToken();
@@ -501,7 +545,7 @@ const logoutUser = async (req, res, next) => {
         const decoded = jwt.verify(token, config.REFRESH_TOKEN_SECRET);
         await Auth.updateOne(
           { userId: decoded.id },
-          { $unset: { refreshToken: "" } }
+          { $unset: { refreshToken: "" } },
         );
       } catch (jwtErr) {
         // Token is already expired or invalid, nothing to invalidate
@@ -523,9 +567,12 @@ const updateUserProfile = async (req, res, next) => {
     const { firstname, lastname, phoneNumber } = req.body;
     const user = req.user;
 
-    if (firstname) user.firstname = firstLetterInStringToUppercase(firstname.trim());
-    if (lastname) user.lastname = firstLetterInStringToUppercase(lastname.trim());
-    if (phoneNumber !== undefined) user.phoneNumber = (phoneNumber || "").trim();
+    if (firstname)
+      user.firstname = firstLetterInStringToUppercase(firstname.trim());
+    if (lastname)
+      user.lastname = firstLetterInStringToUppercase(lastname.trim());
+    if (phoneNumber !== undefined)
+      user.phoneNumber = (phoneNumber || "").trim();
 
     await user.save();
 
@@ -562,12 +609,16 @@ const changePassword = async (req, res, next) => {
     const user = req.user;
 
     if (!currentPassword || !newPassword) {
-      return next(new ErrorResponse("Please provide current and new passwords", 400));
+      return next(
+        new ErrorResponse("Please provide current and new passwords", 400),
+      );
     }
 
     const auth = await Auth.findOne({ userId: user._id });
     if (!auth) {
-      return next(new ErrorResponse("Authentication credentials not found", 404));
+      return next(
+        new ErrorResponse("Authentication credentials not found", 404),
+      );
     }
 
     const isMatch = await auth.matchPasswords(currentPassword);

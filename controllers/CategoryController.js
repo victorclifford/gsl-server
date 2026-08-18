@@ -27,14 +27,20 @@ exports.addCategory = async (req, res, next) => {
         new ErrorResponse(
           "Another category with the same name already exists!",
           400,
-          "duplicateKeys"
-        )
+          "duplicateKeys",
+        ),
       );
     }
 
     // validate parent if provided
     if (parent && !mongoose.Types.ObjectId.isValid(parent)) {
-      return next(new ErrorResponse("Invalid parent category ID!", 400, "validationError"));
+      return next(
+        new ErrorResponse(
+          "Invalid parent category ID!",
+          400,
+          "validationError",
+        ),
+      );
     }
 
     const categoryData = {
@@ -80,16 +86,12 @@ exports.getAllCategories = async (req, res, next) => {
       }
     }
 
-    const result = await paginate(
-      Category,
-      query,
-      {
-        page: Number(page) || 1,
-        limit: Number(limit) || 10,
-        populate: { path: "parent", select: "name slug" },
-        sort: { sortOrder: 1, createdAt: -1 }
-      }
-    );
+    const result = await paginate(Category, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      populate: { path: "parent", select: "name slug" },
+      sort: { sortOrder: 1, createdAt: -1 },
+    });
 
     return res.status(200).json({
       success: true,
@@ -113,7 +115,7 @@ exports.getCategoryTree = async (req, res, next) => {
     const tree = topLevel.map((parent) => ({
       ...parent.toObject(),
       subcategories: allCategories.filter(
-        (c) => c.parent && c.parent.toString() === parent._id.toString()
+        (c) => c.parent && c.parent.toString() === parent._id.toString(),
       ),
     }));
 
@@ -134,7 +136,7 @@ exports.getCategory = async (req, res, next) => {
 
     if (!category) {
       return next(
-        new ErrorResponse("Category not found!", 404, "validationError")
+        new ErrorResponse("Category not found!", 404, "validationError"),
       );
     }
 
@@ -154,7 +156,7 @@ exports.updateCategory = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(categoryId)) {
       return next(
-        new ErrorResponse("Invalid category ID!", 400, "validationError")
+        new ErrorResponse("Invalid category ID!", 400, "validationError"),
       );
     }
 
@@ -162,13 +164,13 @@ exports.updateCategory = async (req, res, next) => {
 
     if (!categoryToBeUpdated) {
       return next(
-        new ErrorResponse("Category not found!", 404, "validationError")
+        new ErrorResponse("Category not found!", 404, "validationError"),
       );
     }
 
     if (categoryToBeUpdated?.isDeleted) {
       return next(
-        new ErrorResponse("Category not found!", 404, "validationError")
+        new ErrorResponse("Category not found!", 404, "validationError"),
       );
     }
 
@@ -179,8 +181,8 @@ exports.updateCategory = async (req, res, next) => {
             new ErrorResponse(
               "The field 'Name', cannot be more than 100 characters long and lesser than 2 characters",
               400,
-              "validationError"
-            )
+              "validationError",
+            ),
           );
         }
       }
@@ -195,8 +197,8 @@ exports.updateCategory = async (req, res, next) => {
             new ErrorResponse(
               "The field 'Description', cannot be more than 250 characters long and lesser than 5 characters",
               400,
-              "validationError"
-            )
+              "validationError",
+            ),
           );
         }
       }
@@ -224,7 +226,7 @@ exports.updateCategory = async (req, res, next) => {
     const updatedCategory = await Category.findOneAndUpdate(
       { _id: categoryId },
       { ...cleanedData },
-      { new: true }
+      { new: true },
     );
 
     if (updatedCategory) {
@@ -250,14 +252,14 @@ exports.deleteCategory = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return next(
-        new ErrorResponse("Invalid category ID!", 400, "validationError")
+        new ErrorResponse("Invalid category ID!", 400, "validationError"),
       );
     }
 
     const categoryToBeUpdated = await Category.findById(id);
     if (!categoryToBeUpdated) {
       return next(
-        new ErrorResponse("Category not found!", 404, "validationError")
+        new ErrorResponse("Category not found!", 404, "validationError"),
       );
     }
 

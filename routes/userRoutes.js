@@ -1,6 +1,6 @@
 const express = require("express");
 const OrderController = require("../controllers/OrderController");
-const { authorizeUser } = require("../middlewares/authorizations");
+const { authorizeUser, authorizeAdmin } = require("../middlewares/authorizations");
 
 const router = express.Router();
 
@@ -13,7 +13,8 @@ router.get("/orders/user-orders", authorizeUser, OrderController.getUserOrders);
 router.get("/orders/:orderid", OrderController.getOrder);
 
 router.post(
-  "orders/update-tracking-level",
+  "/orders/update-tracking-level",
+  authorizeAdmin,
   OrderController.updateOrderTrackingLevel
 );
 

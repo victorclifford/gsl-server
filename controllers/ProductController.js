@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Product = require("../models/ProductModel");
+const OfferModel = require("../models/OfferModel");
 const ErrorResponse = require("../utils/errorResponse");
 const config = require("../utils/config");
 const { slugify, generateRandomCode } = require("../utils/helpers.js");
@@ -246,6 +247,25 @@ exports.addProducts = async (req, res, next) => {
       );
     }
 
+    if (currentOffer) {
+      if (!mongoose.Types.ObjectId.isValid(currentOffer)) {
+        return next(
+          new ErrorResponse("Invalid Offer ID!", 400, "validationError"),
+        );
+      }
+
+      const offerExists = await OfferModel.findOne({ _id: currentOffer });
+      if (!offerExists) {
+        return next(
+          new ErrorResponse(
+            "The Selected Offer Was Not Found!",
+            404,
+            "notFound",
+          ),
+        );
+      }
+    }
+
     //upload image and save url and id of image
     let images_uploads = [];
     try {
@@ -276,7 +296,7 @@ exports.addProducts = async (req, res, next) => {
     }
 
     const productData = {
-      name: name.toUpperCase(),
+      name: name,
       slug: `${slugify(name)}-${generateRandomCode(4)}`,
       description,
       additionalInfo,
@@ -603,6 +623,69 @@ exports.getProduct = async (req, res, next) => {
     });
   } catch (error) {
     return next(error);
+  }
+};
+
+exports.updateProductsOffer = async (req, res, next) => {
+  const { products, offer } = req.body;
+
+  if (!Array.isArray(products) || !offer) {
+    return next(
+      new ErrorResponse("Invalid request format", 400, "validationError"),
+    );
+  }
+
+  try {
+    // Validate the offer ID
+    if (!mongoose.Types.ObjectId.isValid(offer)) {
+      return next(
+        new ErrorResponse("Invalid offer ID", 400, "validationError"),
+      );
+    }
+
+    // Validate each product ID
+    for (const productId of products) {
+      if (!mongoose.Types.ObjectId.isValid(productId)) {
+        return next(
+          new ErrorResponse(
+            `Invalid product ID: ${productId}`,
+            400,
+            "validationError",
+          ),
+        );
+      }
+    }
+
+    // Prepare bulk write operations
+    const bulkOps = products.map((productId) => ({
+      updateOne: {
+        filter: { _id: new mongoose.Types.ObjectId(productId) },
+        update: { $set: { currentOffer: offer } },
+      },
+    }));
+
+    // Perform bulk write
+    const bulkWriteResult = await Product.bulkWrite(bulkOps);
+
+    // Check if any products were updated
+    if (bulkWriteResult.nModified === 0) {
+      return next(
+        new ErrorResponse("No products were updated", 404, "validationError"),
+      );
+    }
+
+    // Retrieve the updated products
+    const updatedProducts = await Product.find({
+      _id: { $in: products },
+    }).lean();
+
+    res.status(200).json({
+      message: "Products offer updated successfully",
+      products: updatedProducts,
+    });
+  } catch (error) {
+    console.error(error);
+    return next(new ErrorResponse("Internal server error", 500, "serverError"));
   }
 };
 

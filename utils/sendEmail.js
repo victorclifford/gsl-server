@@ -6,22 +6,25 @@ exports.sendEmail = (options) => {
   const transporter = nodemailer.createTransport({
     // service: process.env.EMAIL_SERVICE,
     // host: process.env.EMAIL_HOST,
-    host: "smtp.elasticemail.com",
+    // host: "smtp.mailersend.net",
+    host: "mail.mooresub.ng",
     // port: process.env.EMAIL_PORT,
-    port: 2525,
+    port: 465,
     auth: {
       // user: process.env.EMAIL_USER,
       // pass: process.env.EMAIL_PASSWORD,
+      // user: "MS_OcwWK4@mooresub.ng",
       user: "noreply@mooresub.ng",
-      pass: "587F2AC078DCE58A5D292613BFC4A7889E6B",
+      // pass: "B2Q5TMiOIBafyiYv",
+      pass: "Password2024$",
     },
-    trackopens: false,
-    trackclicks: false,
-    headers: {
-      // 'X-SES-CONFIGURATION-SET': 'ConfigSet',
-      trackopens: false,
-      trackclicks: false,
-    },
+    // trackopens: false,
+    // trackclicks: false,
+    // headers: {
+    //   // 'X-SES-CONFIGURATION-SET': 'ConfigSet',
+    //   trackopens: false,
+    //   trackclicks: false,
+    // },
   });
 
   const handlebarOptions = {
