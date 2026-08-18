@@ -1,7 +1,6 @@
-const fs = require("fs");
 const BannerModel = require("../models/BannerModel");
 const ErrorResponse = require("../utils/errorResponse");
-const { cloudinary } = require("../utils/cloudinary");
+const { cloudinary, uploadImage } = require("../utils/cloudinary");
 
 // @desc    Get active banners for customer storefront
 // @route   GET /api/banners
@@ -48,7 +47,7 @@ exports.getAllBannersAdmin = async (req, res, next) => {
 // @access  Private/SuperAdmin
 exports.createBanner = async (req, res, next) => {
   try {
-    const { title, subtitle, badge, ctaText, ctaLink, order, isActive, image } =
+    const { title, subtitle, badge, ctaText, ctaLink, order, isActive, image, placement } =
       req.body;
 
     if (!title) {
@@ -59,15 +58,10 @@ exports.createBanner = async (req, res, next) => {
 
     // If a file was uploaded through multipart/form-data
     if (req.file) {
-      const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+      const uploadResult = await uploadImage(req.file, {
         folder: "goSolar/banners",
       });
-      bannerImageUrl = uploadResult.secure_url;
-
-      // Clean up local temp file
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error("Error removing local temp file:", err);
-      });
+      bannerImageUrl = uploadResult.url;
     }
 
     if (!bannerImageUrl) {
@@ -85,6 +79,7 @@ exports.createBanner = async (req, res, next) => {
       ctaLink: ctaLink || "/shop",
       order: Number(order) || 0,
       isActive: isActive === undefined ? true : Boolean(isActive),
+      placement: placement || "storefront_hero",
     });
 
     return res.status(201).json({
@@ -93,9 +88,6 @@ exports.createBanner = async (req, res, next) => {
       banner,
     });
   } catch (error) {
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     return next(error);
   }
 };
@@ -112,21 +104,17 @@ exports.updateBanner = async (req, res, next) => {
       return next(new ErrorResponse("Banner not found", 404));
     }
 
-    const { title, subtitle, badge, ctaText, ctaLink, order, isActive, image } =
+    const { title, subtitle, badge, ctaText, ctaLink, order, isActive, image, placement } =
       req.body;
 
     let bannerImageUrl = image || banner.image;
 
     // Handle new uploaded image if provided
     if (req.file) {
-      const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+      const uploadResult = await uploadImage(req.file, {
         folder: "goSolar/banners",
       });
-      bannerImageUrl = uploadResult.secure_url;
-
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error("Error removing local temp file:", err);
-      });
+      bannerImageUrl = uploadResult.url;
     }
 
     banner = await BannerModel.findByIdAndUpdate(
@@ -140,6 +128,7 @@ exports.updateBanner = async (req, res, next) => {
         ctaLink: ctaLink || banner.ctaLink,
         order: order !== undefined ? Number(order) : banner.order,
         isActive: isActive !== undefined ? Boolean(isActive) : banner.isActive,
+        placement: placement !== undefined ? placement : banner.placement,
       },
       { new: true, runValidators: true }
     );
@@ -150,9 +139,6 @@ exports.updateBanner = async (req, res, next) => {
       banner,
     });
   } catch (error) {
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     return next(error);
   }
 };

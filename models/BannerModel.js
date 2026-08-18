@@ -46,6 +46,11 @@ const bannerSchema = new mongoose.Schema(
     endDate: {
       type: Date,
     },
+    placement: {
+      type: String,
+      enum: ["storefront_hero", "storefront_promo_strip", "storefront_promo_card"],
+      default: "storefront_hero",
+    },
   },
   { timestamps: true }
 );
