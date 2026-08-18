@@ -7,6 +7,9 @@ const connectDB = async () => {
     if (process.env.NODE_ENV === "development") {
       dbName = "gosolar_dev";
       console.log("connecting to go_solar development DB...");
+    } else {
+      dbName = "gosolar_prod";
+      console.log("connecting to go_solar production DB...");
     }
 
     const db = await mongoose.connect(config.MONGO_URI, {
