@@ -28,7 +28,7 @@ router.patch("/update-category", authorizeSuperAdmin, updateCategory);
 router.delete("category/:id", authorizeSuperAdmin, deleteCategory);
 
 //add product
-const uploadFields = upload.fields([{ name: "images", maxCount: 3 }]);
+const uploadFields = upload.fields([{ name: "images", maxCount: 5 }]);
 router.post("/add-product", authorizeSuperAdmin, uploadFields, addProducts);
 
 //update product(details)
@@ -62,7 +62,17 @@ router.get("/all-orders", authorizeAdmin, OrderController.getAllOrders);
 
 router.get("/users", authorizeAdmin, AdminController.getUsers);
 
+router.post("/create-account", authorizeAdmin, AdminController.createAccount);
+
 router.get("/users/:userid", authorizeAdmin, AdminController.getUser);
+
+router.get("/admins", authorizeAdmin, AdminController.getAdminUsers);
+
+router.patch(
+  "/users/:userid/role",
+  authorizeSuperAdmin,
+  AdminController.updateUserRole
+);
 
 router.get(
   "/dashboard-stats",

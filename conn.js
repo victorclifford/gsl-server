@@ -1,4 +1,3 @@
-// require("dotenv").config();
 const mongoose = require("mongoose");
 const config = require("./utils/config");
 
@@ -11,12 +10,19 @@ const connectDB = async () => {
     }
 
     const db = await mongoose.connect(config.MONGO_URI, {
-      dbName: dbName,
+      dbName,
     });
-    console.log(`MONGODB CONNECTED TO: ${db.connection.host}...`);
+    console.log(
+      `✅ MongoDB Connected to: ${db.connection.host || "localhost"} (${db.connection.name})`,
+    );
+
+    // Run database migrations on startup
+    const runDbMigration = require("./utils/migration");
+    await runDbMigration();
+
     return db;
   } catch (error) {
-    console.log(error);
+    console.error("❌ MongoDB Connection Error:", error.message);
     process.exit(1);
   }
 };

@@ -1,4 +1,3 @@
-const fs = require("fs");
 const mongoose = require("mongoose");
 const Product = require("../models/ProductModel");
 const ErrorResponse = require("../utils/errorResponse");
@@ -6,22 +5,191 @@ const config = require("../utils/config");
 const { slugify, generateRandomCode } = require("../utils/helpers.js");
 const { addProductSchema } = require("../utils/validationSchemas");
 const { firstLetterInStringToUppercase } = require("../utils/helpers");
-const { cloudinary } = require("../utils/cloudinary");
+const { cloudinary, uploadImage } = require("../utils/cloudinary");
 const CategoryModel = require("../models/CategoryModel");
+const paginate = require("../utils/paginate");
 
-//get all products
+//get all products (admin / all)
 exports.getAllProducts = async (req, res, next) => {
   try {
-    const products = await Product.find({ isDeleted: false })
-      .populate(["category"])
-      .sort({
-        createdAt: -1,
-      })
-      .exec();
+    const { page, limit, q, status, category } = req.query;
+
+    const query = { isDeleted: false };
+
+    if (q) {
+      query.$or = [
+        { name: { $regex: q, $options: "i" } },
+        { productCode: { $regex: q, $options: "i" } },
+      ];
+    }
+
+    if (status && status !== "All") {
+      query.isPublished = status === "published";
+    }
+
+    if (category && category !== "All") {
+      const subcategories = await CategoryModel.find({
+        parent: category,
+        isDeleted: false,
+      }).select("_id");
+      const categoryIds = [category, ...subcategories.map((sub) => sub._id)];
+      query.category = { $in: categoryIds };
+    }
+
+    const result = await paginate(Product, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      populate: ["category", "currentOffer"],
+      sort: { createdAt: -1 },
+    });
+
     return res.status(200).json({
       success: true,
       message: "Products fetch successful",
-      products,
+      products: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+//get published products (customer storefront)
+exports.getPublishedProducts = async (req, res, next) => {
+  try {
+    const { page, limit, q, category, sort, minPrice, maxPrice, brands } =
+      req.query;
+
+    const query = { isDeleted: false, isPublished: true };
+
+    if (q) {
+      query.$or = [
+        { name: { $regex: q, $options: "i" } },
+        { productCode: { $regex: q, $options: "i" } },
+      ];
+    }
+
+    if (category && category !== "All") {
+      const subcategories = await CategoryModel.find({
+        parent: category,
+        isDeleted: false,
+      }).select("_id");
+      const categoryIds = [category, ...subcategories.map((sub) => sub._id)];
+      query.category = { $in: categoryIds };
+    }
+
+    // Get available brands matching query (before price and brand filters are applied)
+    const availableBrands = await Product.distinct("brand", query);
+
+    // Apply price range filter (matching active price: discountPrice if set, otherwise regular price)
+    if (minPrice || maxPrice) {
+      const min = Number(minPrice) || 0;
+      const max = Number(maxPrice) || 999999999;
+
+      query.$or = [
+        {
+          discountPrice: { $gt: 0, $gte: min, $lte: max },
+        },
+        {
+          $and: [
+            {
+              $or: [
+                { discountPrice: { $exists: false } },
+                { discountPrice: { $lte: 0 } },
+              ],
+            },
+            { price: { $gte: min, $lte: max } },
+          ],
+        },
+      ];
+    }
+
+    // Apply brand filter (comma separated list)
+    if (brands) {
+      const brandList = brands
+        .split(",")
+        .map((b) => b.trim())
+        .filter(Boolean);
+      if (brandList.length > 0) {
+        query.brand = { $in: brandList };
+      }
+    }
+
+    let sortOption = { createdAt: -1 };
+    if (sort) {
+      switch (sort) {
+        case "price-asc":
+          sortOption = { price: 1 };
+          break;
+        case "price-desc":
+          sortOption = { price: -1 };
+          break;
+        case "name-asc":
+          sortOption = { name: 1 };
+          break;
+        case "name-desc":
+          sortOption = { name: -1 };
+          break;
+        case "newest":
+        default:
+          sortOption = { createdAt: -1 };
+          break;
+      }
+    }
+
+    const result = await paginate(Product, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 12,
+      populate: ["category", "currentOffer"],
+      sort: sortOption,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Published products fetched successfully",
+      products: result.data,
+      pagination: result.pagination,
+      brands: availableBrands,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+//get products by category
+exports.getProductsByCategory = async (req, res, next) => {
+  try {
+    const { categoryid } = req.params;
+    const { page, limit, q, status } = req.query;
+
+    const subcategories = await CategoryModel.find({
+      parent: categoryid,
+      isDeleted: false,
+    }).select("_id");
+    const categoryIds = [categoryid, ...subcategories.map((sub) => sub._id)];
+
+    const query = { category: { $in: categoryIds }, isDeleted: false };
+
+    if (q) {
+      query.name = { $regex: q, $options: "i" };
+    }
+
+    if (status && status !== "All") {
+      query.isPublished = status === "published";
+    }
+
+    const result = await paginate(Product, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      populate: ["category", "currentOffer"],
+      sort: { createdAt: -1 },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Category products fetched successfully",
+      products: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     return next(error);
@@ -36,16 +204,21 @@ exports.addProducts = async (req, res, next) => {
       name,
       description,
       price,
+      discountPrice,
+      shippingClass,
       quantityInStock,
       brand,
       additionalInfo,
       outsideLocationDeliveryFee,
       withinLocationDeliveryFee,
+      currentOffer,
+      datasheet,
+      showDatasheet,
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(category)) {
       return next(
-        new ErrorResponse("Invalid Category ID!", 400, "validationError")
+        new ErrorResponse("Invalid Category ID!", 400, "validationError"),
       );
     }
 
@@ -59,7 +232,7 @@ exports.addProducts = async (req, res, next) => {
 
     if (brand && brand.length > 50) {
       return next(
-        new ErrorResponse("Brand name is too long.", 400, "validationError")
+        new ErrorResponse("Brand name is too long.", 400, "validationError"),
       );
     }
 
@@ -68,56 +241,38 @@ exports.addProducts = async (req, res, next) => {
         new ErrorResponse(
           "Additional info is too long. it cannot be more than 300 characters",
           400,
-          "validationError"
-        )
+          "validationError",
+        ),
       );
     }
 
     //upload image and save url and id of image
     let images_uploads = [];
     try {
-      //upload for proprty images(field: 'images')
+      //upload for property images (field: 'images') — direct from memory buffer
       if (req?.files?.images?.length > 0) {
         console.log("handling files...");
         const resultsOne = await Promise.all(
-          req?.files?.images.map((file) =>
-            cloudinary.uploader.upload(file.path, {
-              folder: "goSolar",
-            })
-          )
+          req.files.images.map((file) =>
+            uploadImage(file, { folder: "goSolar/products" }),
+          ),
         );
 
-        //delete images from project folder storage(uploads/), to free space
-        req?.files?.images?.forEach((fi) => {
-          fs.unlink(fi.path, (err) => {
-            if (err) {
-              console.error("err deleting file in project folder::", err);
-            }
-            console.log(
-              `${fi.path} has been deleted after successful cloud upload`
-            );
-          });
-        });
-
-        images_uploads = resultsOne.map((img) => {
-          return {
-            url: img.secure_url,
-            public_id: img.public_id,
-          };
-        });
-
+        images_uploads = resultsOne;
         console.log({ images_uploads });
-      } else {
-        return next(
-          new ErrorResponse(
-            "Please provide at least one image for the Product",
-            400,
-            "validationError"
-          )
-        );
       }
     } catch (err) {
       return next(new ErrorResponse(err.message, 500, "uploadError"));
+    }
+
+    let parsedDatasheet = [];
+    if (datasheet) {
+      try {
+        parsedDatasheet =
+          typeof datasheet === "string" ? JSON.parse(datasheet) : datasheet;
+      } catch (e) {
+        parsedDatasheet = [];
+      }
     }
 
     const productData = {
@@ -126,12 +281,20 @@ exports.addProducts = async (req, res, next) => {
       description,
       additionalInfo,
       category,
-      quantityInStock,
-      price,
+      quantityInStock: Number(quantityInStock) || 0,
+      price: Number(price),
+      discountPrice: Number(discountPrice) || 0,
+      shippingClass: shippingClass || "standard",
       brand,
       images: images_uploads,
-      outsideLocationDeliveryFee,
-      withinLocationDeliveryFee,
+      outsideLocationDeliveryFee: Number(outsideLocationDeliveryFee) || 0,
+      withinLocationDeliveryFee: Number(withinLocationDeliveryFee) || 0,
+      currentOffer:
+        currentOffer && mongoose.Types.ObjectId.isValid(currentOffer)
+          ? currentOffer
+          : null,
+      datasheet: parsedDatasheet,
+      showDatasheet: showDatasheet === true || showDatasheet === "true",
     };
 
     const newProduct = await Product.create(productData);
@@ -154,36 +317,41 @@ exports.updateProduct = async (req, res, next) => {
       additionalInfo,
       category,
       price,
+      discountPrice,
+      shippingClass,
       brand,
       quantityInStock,
+      datasheet,
+      showDatasheet,
+      currentOffer,
     } = req.body;
 
     //validations
 
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
+        new ErrorResponse("Invalid product ID!", 400, "validationError"),
       );
     }
 
     const productToBeUpdated = await Product.findById(productId);
     if (!productToBeUpdated) {
       return next(
-        new ErrorResponse("Product not found!", 404, "validationError")
+        new ErrorResponse("Product not found!", 404, "validationError"),
       );
     }
 
     if (category) {
       if (!mongoose.Types.ObjectId.isValid(category)) {
         return next(
-          new ErrorResponse("Invalid category ID!", 400, "validationError")
+          new ErrorResponse("Invalid category ID!", 400, "validationError"),
         );
       }
 
       const categoryToBeUpdated = await CategoryModel.findById(category);
       if (!categoryToBeUpdated) {
         return next(
-          new ErrorResponse("Category not found!", 404, "validationError")
+          new ErrorResponse("Category not found!", 404, "validationError"),
         );
       }
     }
@@ -194,8 +362,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "The field 'Name', cannot be more than 80 characters long and lesser than 3 characters",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -206,8 +374,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "The field 'Description', cannot be more than 350 characters long and lesser than 5 characters",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -218,8 +386,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "The field 'Additional Information', cannot be more than 300 characters long and lesser than 5 characters",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -231,8 +399,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "The field 'Brand', cannot be more than 50 characters long",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -243,8 +411,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "Price cannot be more than 'NGN 1000000000' or lesser than NGN 50",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -255,8 +423,8 @@ exports.updateProduct = async (req, res, next) => {
           new ErrorResponse(
             "Quantity In Stock cannot be more than '10000'",
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
     }
@@ -285,7 +453,7 @@ exports.updateProduct = async (req, res, next) => {
     const updatedProduct = await Product.findOneAndUpdate(
       { _id: productId },
       { ...cleanedData },
-      { new: true }
+      { new: true },
     );
     // console.log({ updatedProduct });
     if (updatedProduct) {
@@ -310,7 +478,7 @@ exports.updateProductImage = async (req, res, next) => {
     console.log("rq??", req.file);
     if (!req.file) {
       return next(
-        new ErrorResponse("Please add an image", 400, "validationError")
+        new ErrorResponse("Please add an image", 400, "validationError"),
       );
     }
 
@@ -318,7 +486,7 @@ exports.updateProductImage = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
+        new ErrorResponse("Invalid product ID!", 400, "validationError"),
       );
     }
 
@@ -326,73 +494,80 @@ exports.updateProductImage = async (req, res, next) => {
     const product = await Product.findById(productId);
     if (!product) {
       return next(
-        new ErrorResponse("Product not found", 404, "validationError")
+        new ErrorResponse("Product not found", 404, "validationError"),
       );
     }
 
-    //find img to be updated
-    const imgToUpdate = product.images.filter((im) => im.public_id == imgId);
-    console.log({ imgToUpdate });
-
-    if (!imgToUpdate?.length) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) {
-          console.error("err deleting file in project folder::", err);
-        }
-        console.log(
-          `${req.file.path} has been deleted after successful cloud upload`
+    // If an imgId is provided, we try to update that specific image in-place
+    if (imgId && imgId !== "new") {
+      const imgToUpdate = product.images.filter((im) => im.public_id == imgId);
+      if (imgToUpdate?.length > 0) {
+        const remainingImgs = product.images.filter(
+          (img) => img.public_id != imgId,
         );
-      });
 
+        //update img — upload directly from memory buffer
+        const imgUpdate = await uploadImage(req.file, {
+          public_id: imgId,
+          overwrite: true,
+          invalidate: true,
+        });
+
+        console.log({ imgUpdate });
+
+        if (imgUpdate?.url && imgUpdate?.public_id) {
+          remainingImgs.push({
+            url: imgUpdate.url,
+            public_id: imgUpdate.public_id,
+          });
+
+          product.images = remainingImgs;
+          await product.save();
+
+          return res.status(200).json({
+            success: true,
+            message: "product image updated successfully",
+            product,
+          });
+        }
+      }
+    }
+
+    // Otherwise, we append a new image (upload as new)
+    if (product.images.length >= 5) {
       return next(
-        new ErrorResponse("Image to update not found", 404, "validationError")
+        new ErrorResponse(
+          "Product already has the maximum of 5 images.",
+          400,
+          "validationError",
+        ),
       );
     }
 
-    const remainingImgs = product.images.filter(
-      (img) => img.public_id != imgId
-    );
-    console.log("remainingImgs::", remainingImgs);
-
-    //update img
-    const imgUpdate = await cloudinary.uploader.upload(req.file.path, {
-      public_id: imgId,
-      overwrite: true,
-      invalidate: true,
+    const newImg = await uploadImage(req.file, {
+      folder: "goSolar/products",
     });
 
-    console.log({ imgUpdate });
-
-    if (imgUpdate?.secure_url && imgUpdate?.public_id) {
-      remainingImgs.push({
-        url: imgUpdate.secure_url,
-        public_id: imgUpdate.public_id,
+    if (newImg?.url && newImg?.public_id) {
+      product.images.push({
+        url: newImg.url,
+        public_id: newImg.public_id,
       });
 
-      fs.unlink(req.file.path, (err) => {
-        if (err) {
-          console.error("err deleting file in project folder::", err);
-        }
-        console.log(
-          `${req.file.path} has been deleted after successful cloud upload`
-        );
-      });
-
-      product.images = remainingImgs;
       await product.save();
 
       return res.status(200).json({
         success: true,
-        message: "product image updated successfully",
+        message: "Image added to product successfully",
         product,
       });
     } else {
       return next(
         new ErrorResponse(
-          "An unexpected error occured while trying to update your image",
+          "An unexpected error occured while trying to upload your image",
           500,
-          "validationError"
-        )
+          "validationError",
+        ),
       );
     }
   } catch (error) {
@@ -406,12 +581,12 @@ exports.getProduct = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(productid)) {
       return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
+        new ErrorResponse("Invalid product ID!", 400, "validationError"),
       );
     }
 
     const product = await Product.findOne({ _id: productid, isDeleted: false })
-      .populate("category")
+      .populate(["category", "currentOffer"])
       .exec();
 
     if (!product) {
@@ -437,7 +612,7 @@ exports.deleteProduct = async (req, res, next) => {
 
     if (!mongoose.Types.ObjectId.isValid(productid)) {
       return next(
-        new ErrorResponse("Invalid product ID!", 400, "validationError")
+        new ErrorResponse("Invalid product ID!", 400, "validationError"),
       );
     }
 

@@ -1,6 +1,5 @@
-require("dotenv").config;
+require("dotenv").config();
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const config = require("../utils/config");
@@ -20,16 +19,10 @@ const UserSchema = new Schema(
       type: String,
       required: true,
     },
-    //users slug
+    //users slug (optional)
     slug: {
       type: String,
-      required: true,
-    },
-    //hashed user password
-    password: {
-      type: String,
-      required: true,
-      select: false,
+      required: false,
     },
     //mobile number
     phoneNumber: {
@@ -57,104 +50,43 @@ const UserSchema = new Schema(
       type: Boolean,
       default: false,
     },
-    //jwt signed token
-    token: {
-      type: String,
-      select: false,
-    },
-    verification_token: {
-      type: String,
-    },
-    // verification_code: {
-    //   type: String,
-    // },
-    verificationExpiry: {
+    lastLogin: {
       type: Date,
     },
-    resetPasswordToken: {
+    roleTitle: {
       type: String,
-    },
-    resetPasswordExpiration: {
-      type: Date,
+      default: "",
     },
   },
   { timestamps: true }
 );
 
-UserSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) {
-    return next();
-  }
 
-  // generate salt, and hash password with generated salt
-  const salt = await bcrypt.genSalt(10);
-  //   console.log("ppp::", this.password);
-  this.password = await bcrypt.hash(this.password, salt);
-});
-
-UserSchema.methods.matchPasswords = async function (password) {
-  // console.log("db-pass::", this.password);
-  return await bcrypt.compare(password, this.password);
-};
 
 UserSchema.methods.getSignedToken = async function () {
-  const signedToken = await jwt.sign({ id: this._id }, config.JWT_SECRET, {
-    expiresIn: config.JWT_EXPIRY,
-  });
-  this.token = signedToken;
+  const signedToken = await jwt.sign(
+    {
+      id: this._id,
+      isAdmin: this.isAdmin,
+      isSuperAdmin: this.isSuperAdmin,
+    },
+    config.JWT_SECRET,
+    {
+      expiresIn: config.JWT_EXPIRY,
+    }
+  );
   return signedToken;
 };
 
-//method to generate the reset password token
-UserSchema.methods.getResetToken = function () {
-  const resetToken = crypto.randomBytes(20).toString("hex");
-
-  //now hashing the generated token and save to the user schema
-  this.resetPasswordToken = crypto
-    .createHash("sha256")
-    .update(resetToken)
-    .digest("hex");
-
-  //setting the token expiry
-  this.resetPasswordExpiration = Date.now() + 10 * (60 * 1000);
-
-  return resetToken;
-};
-
-//method to generate verification token
-UserSchema.methods.getVerificationToken = async function () {
-  const verificationToken = crypto.randomBytes(12).toString("hex");
-
-  //hashing verification code (*will be saved and used to find user*)
-  this.verification_token = crypto
-    .createHmac("sha256", process.env.HASH_SALT)
-    .update(verificationToken)
-    .digest("hex");
-
-  //setting the verification code expiry
-  this.verificationExpiry = Date.now() + 7 * 24 * (60 * 1000);
-
-  //   console.log("verificationToken on method::", this.verification_token);
-  return this.verification_token;
-};
-
-//method to generate verification code
-UserSchema.methods.getVerificationCode = function () {
-  const verificationCode = crypto
-    .randomInt(0, 1000000)
-    .toString()
-    .padStart(6, 0);
-
-  //hashing verification code (*will be saved and used to find user*)
-  this.verification_code = crypto
-    .createHmac("sha256", process.env.HASH_SALT)
-    .update(verificationCode)
-    .digest("hex");
-
-  //setting the verification code expiry
-  this.verificationExpiry = Date.now() + 60 * 24 * (60 * 1000);
-
-  return verificationCode;
+UserSchema.methods.getSignedRefreshToken = async function () {
+  const signedRefreshToken = await jwt.sign(
+    { id: this._id },
+    config.REFRESH_TOKEN_SECRET,
+    {
+      expiresIn: config.REFRESH_TOKEN_EXPIRY,
+    }
+  );
+  return signedRefreshToken;
 };
 
 module.exports = mongoose.model("User", UserSchema);

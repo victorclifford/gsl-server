@@ -1,23 +1,19 @@
 const multer = require("multer");
-const path = require("path");
 
-const storage = multer.diskStorage({
-  filename: function (req, file, cb) {
-    cb(null, new Date().toISOString() + "_" + file.originalname);
-  },
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname + "/uploads/"));
-  },
-});
-
+// Keep files in memory — no temp folder needed.
+// Cloudinary uploads are done directly from the buffer in the controller.
 const upload = multer({
-  storage: storage,
-  limits: 10 * (1024 * 1024), //5mb (max image size)
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB per file
   fileFilter: function (req, file, cb) {
-    if (file.mimetype === "image/png" || file.mimetype === "image/jpeg") {
+    if (
+      file.mimetype === "image/png" ||
+      file.mimetype === "image/jpeg" ||
+      file.mimetype === "image/webp"
+    ) {
       cb(null, true);
     } else {
-      cb(new Error("Unsupported file format/type!"), false);
+      cb(new Error("Unsupported file format. Use PNG, JPEG, or WEBP."), false);
     }
   },
 });

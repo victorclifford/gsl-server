@@ -5,11 +5,12 @@ const config = require("../utils/config");
 const { slugify } = require("../utils/helpers.js");
 const { categoryValidationSchema } = require("../utils/validationSchemas");
 const { firstLetterInStringToUppercase } = require("../utils/helpers");
+const paginate = require("../utils/paginate");
 
 //create category
 exports.addCategory = async (req, res, next) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, parent, icon, sortOrder } = req.body;
 
     //validate user input
     try {
@@ -31,23 +32,25 @@ exports.addCategory = async (req, res, next) => {
       );
     }
 
+    // validate parent if provided
+    if (parent && !mongoose.Types.ObjectId.isValid(parent)) {
+      return next(new ErrorResponse("Invalid parent category ID!", 400, "validationError"));
+    }
+
     const categoryData = {
       slug: slugify(name),
       name: firstLetterInStringToUppercase(name),
       description,
+      parent: parent || null,
+      icon: icon || null,
+      sortOrder: sortOrder || 0,
     };
 
-    // console.log("catData::", categoryData);
-
-    //create category with Category model
     const newCategory = await Category.create({ ...categoryData });
     if (newCategory) {
-      // const allCategories = await Category.find({});
-
-      //return response
       return res.status(201).json({
         success: true,
-        message: "category created successfully",
+        message: "Category created successfully",
         category: newCategory,
       });
     }
@@ -56,16 +59,68 @@ exports.addCategory = async (req, res, next) => {
   }
 };
 
-//get all categories
+//get all categories (flat list)
 exports.getAllCategories = async (req, res, next) => {
   try {
-    const categories = await Category.find({ isDeleted: false }).sort({
-      createdAt: -1,
-    });
+    const { page, limit, q, parent } = req.query;
+
+    const query = { isDeleted: false };
+
+    if (q) {
+      query.name = { $regex: q, $options: "i" };
+    }
+
+    if (parent !== undefined) {
+      if (parent === "null" || parent === "none") {
+        query.parent = null;
+      } else if (parent === "any") {
+        query.parent = { $ne: null };
+      } else if (mongoose.Types.ObjectId.isValid(parent)) {
+        query.parent = parent;
+      }
+    }
+
+    const result = await paginate(
+      Category,
+      query,
+      {
+        page: Number(page) || 1,
+        limit: Number(limit) || 10,
+        populate: { path: "parent", select: "name slug" },
+        sort: { sortOrder: 1, createdAt: -1 }
+      }
+    );
+
     return res.status(200).json({
       success: true,
       message: "Categories fetch successful",
-      categories,
+      categories: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// get categories as a nested tree: top-level + their subcategories
+exports.getCategoryTree = async (req, res, next) => {
+  try {
+    const allCategories = await Category.find({ isDeleted: false }).sort({
+      sortOrder: 1,
+    });
+
+    const topLevel = allCategories.filter((c) => !c.parent);
+    const tree = topLevel.map((parent) => ({
+      ...parent.toObject(),
+      subcategories: allCategories.filter(
+        (c) => c.parent && c.parent.toString() === parent._id.toString()
+      ),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      message: "Category tree fetch successful",
+      categories: tree,
     });
   } catch (error) {
     return next(error);
