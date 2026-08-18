@@ -11,17 +11,25 @@ const ProductModel = require("../models/ProductModel");
 const TrackingIdModel = require("../models/TrackingId");
 const PaystackAPI = require("../utils/paystack");
 const { sendEmail } = require("../utils/sendEmail");
-const UserModel = require("../models/UserModel");
 const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
+const UserModel = require("../models/UserModel");
+const paginate = require("../utils/paginate");
 
 exports.createOrder = async (req, res, next) => {
   try {
-    const { products, paymentReference, paymentMethod, totalPricePaid, deliveryDetails } =
-      req.body;
+    const {
+      products,
+      paymentReference,
+      paymentMethod,
+      totalPricePaid,
+      deliveryDetails,
+    } = req.body;
 
     const user = req.user;
     if (!user) {
-      return next(new ErrorResponse("Please login to continue!", 401, "unauthorized"));
+      return next(
+        new ErrorResponse("Please login to continue!", 401, "unauthorized"),
+      );
     }
     console.log({ paymentReference });
     let itemsArray = [];
@@ -30,7 +38,13 @@ exports.createOrder = async (req, res, next) => {
 
     for (const product of products) {
       if (product?.qty < 1 || !product?.qty) {
-        return next(new ErrorResponse("Invalid product Quantity!", 400, "validationError"));
+        return next(
+          new ErrorResponse(
+            "Invalid product Quantity!",
+            400,
+            "validationError",
+          ),
+        );
       }
 
       if (!product?.deliveryFee) {
@@ -38,13 +52,15 @@ exports.createOrder = async (req, res, next) => {
           new ErrorResponse(
             `Deleivery fee for product with ID:${product?.product} is required !`,
             400,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
 
       if (!mongoose.Types.ObjectId.isValid(product?.product)) {
-        return next(new ErrorResponse("Invalid product ID!", 400, "validationError"));
+        return next(
+          new ErrorResponse("Invalid product ID!", 400, "validationError"),
+        );
       }
 
       //check if products to be purchased still exists or is out of stock
@@ -57,8 +73,8 @@ exports.createOrder = async (req, res, next) => {
           new ErrorResponse(
             `product with ID: ${product.product}, may have been deleted already!`,
             404,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
 
@@ -67,13 +83,14 @@ exports.createOrder = async (req, res, next) => {
           new ErrorResponse(
             `Quantity requested(${product.qty}), is above the quantity in stock(${productExists.quantityInStock}), for the product: ${productExists.name}!`,
             404,
-            "validationError"
-          )
+            "validationError",
+          ),
         );
       }
 
       //subract qty from qty in stock
-      productExists.quantityInStock = productExists.quantityInStock - parseInt(product.qty);
+      productExists.quantityInStock =
+        productExists.quantityInStock - parseInt(product.qty);
       purchasedProducts.push(productExists);
 
       itemsArray.push({
@@ -97,7 +114,9 @@ exports.createOrder = async (req, res, next) => {
       paymentReference: paymentReference,
     });
     if (orderRefExists) {
-      return next(new ErrorResponse("Invalid payment ref!", 400, "validationError"));
+      return next(
+        new ErrorResponse("Invalid payment ref!", 400, "validationError"),
+      );
     }
 
     //check payment methods
@@ -121,14 +140,18 @@ exports.createOrder = async (req, res, next) => {
           user: user?._id,
         });
         if (!newOrder) {
-          new ErrorResponse(`An unexpected error occured`, 500, "validationError");
+          new ErrorResponse(
+            `An unexpected error occured`,
+            500,
+            "validationError",
+          );
         }
 
         //generate and save tracking id
         const trackingIdGenerator = new idGenerator();
         const trackingID = await trackingIdGenerator.generateTrackingID(
           TrackingIdModel,
-          newOrder._id
+          newOrder._id,
         );
 
         const trackingIdDoc = await TrackingIdModel.findOne({
@@ -158,8 +181,12 @@ exports.createOrder = async (req, res, next) => {
         console.log({ totCost, totDeliveryFee, subTotalPrice });
 
         const estimatedDaysForDelivery = 7;
-        const estimatedDateOfDelivery = addDaysToCurrentDate(estimatedDaysForDelivery);
-        const formattedDeliveryDateEstimate = dateStringToReadableDate(estimatedDateOfDelivery);
+        const estimatedDateOfDelivery = addDaysToCurrentDate(
+          estimatedDaysForDelivery,
+        );
+        const formattedDeliveryDateEstimate = dateStringToReadableDate(
+          estimatedDateOfDelivery,
+        );
 
         let orderConfirmedEmailData = {
           from: config.EMAIL_FROM,
@@ -257,7 +284,9 @@ exports.createOrder = async (req, res, next) => {
         });
       }
     } else {
-      return next(new ErrorResponse(`Unsupported payment method`, 400, "validationError"));
+      return next(
+        new ErrorResponse(`Unsupported payment method`, 400, "validationError"),
+      );
     }
   } catch (error) {
     return next(error);
@@ -270,7 +299,9 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
 
     const orderToBeUpdated = await OrderModel.findOne({ trackingId });
     if (!orderToBeUpdated) {
-      return next(new ErrorResponse("Order not found!", 404, "validationError"));
+      return next(
+        new ErrorResponse("Order not found!", 404, "validationError"),
+      );
     }
 
     let trackingStatus = "Processing";
@@ -285,14 +316,20 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
           new ErrorResponse(
             "You are not authorized to perform this operation!",
             401,
-            "unauthorized"
-          )
+            "unauthorized",
+          ),
         );
       }
     } else if (trackingLevel === 3) {
       trackingStatus = "Recieved";
     } else {
-      return next(new ErrorResponse("Invalid tracking status sent!", 400, "validationError"));
+      return next(
+        new ErrorResponse(
+          "Invalid tracking status sent!",
+          400,
+          "validationError",
+        ),
+      );
     }
 
     orderToBeUpdated.trackingLevel = trackingLevel;
@@ -311,16 +348,50 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
 
 exports.getAllOrders = async (req, res, next) => {
   try {
-    const orders = await OrderModel.find({})
-      .populate(["user", "trackingId", "products.product"])
-      .sort({
-        createdAt: -1,
-      })
-      .exec();
+    const { page = 1, limit = 10, q, status } = req.query;
+
+    const query = {};
+
+    if (status && status !== "All") {
+      if (status.toLowerCase() === "received") {
+        query.trackingStatus = { $in: ["Received", "Recieved"] };
+      } else {
+        query.trackingStatus = { $regex: new RegExp(`^${status}$`, "i") };
+      }
+    }
+
+    if (q) {
+      const users = await UserModel.find({
+        $or: [
+          { firstname: { $regex: q, $options: "i" } },
+          { lastname: { $regex: q, $options: "i" } },
+        ],
+      }).select("_id");
+      const userIds = users.map((u) => u._id);
+
+      const trackingIdsDoc = await TrackingIdModel.find({
+        tracking_id: { $regex: q, $options: "i" },
+      }).select("_id");
+      const trackingIds = trackingIdsDoc.map((t) => t._id);
+
+      query.$or = [
+        { user: { $in: userIds } },
+        { trackingId: { $in: trackingIds } },
+      ];
+    }
+
+    const { data: orders, pagination } = await paginate(OrderModel, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      sort: { createdAt: -1 },
+      populate: ["user", "trackingId", "products.product"],
+    });
+
     return res.status(200).json({
       success: true,
       message: "Orders fetch successful",
       orders,
+      pagination,
     });
   } catch (error) {
     return next(error);

@@ -5,12 +5,12 @@ const config = require("../utils/config");
 const { slugify } = require("../utils/helpers.js");
 const { categoryValidationSchema } = require("../utils/validationSchemas");
 const { firstLetterInStringToUppercase } = require("../utils/helpers");
-const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
+const paginate = require("../utils/paginate");
 
 //create category
 exports.addCategory = async (req, res, next) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, parent, icon, sortOrder } = req.body;
 
     //validate user input
     try {
@@ -27,8 +27,19 @@ exports.addCategory = async (req, res, next) => {
         new ErrorResponse(
           "Another category with the same name already exists!",
           400,
-          "duplicateKeys"
-        )
+          "duplicateKeys",
+        ),
+      );
+    }
+
+    // validate parent if provided
+    if (parent && !mongoose.Types.ObjectId.isValid(parent)) {
+      return next(
+        new ErrorResponse(
+          "Invalid parent category ID!",
+          400,
+          "validationError",
+        ),
       );
     }
 
@@ -36,19 +47,16 @@ exports.addCategory = async (req, res, next) => {
       slug: slugify(name),
       name: firstLetterInStringToUppercase(name),
       description,
+      parent: parent || null,
+      icon: icon || null,
+      sortOrder: sortOrder || 0,
     };
 
-    // console.log("catData::", categoryData);
-
-    //create category with Category model
     const newCategory = await Category.create({ ...categoryData });
     if (newCategory) {
-      // const allCategories = await Category.find({});
-
-      //return response
       return res.status(201).json({
         success: true,
-        message: "category created successfully",
+        message: "Category created successfully",
         category: newCategory,
       });
     }
@@ -57,25 +65,64 @@ exports.addCategory = async (req, res, next) => {
   }
 };
 
-//get all categories
+//get all categories (flat list)
 exports.getAllCategories = async (req, res, next) => {
   try {
-    const categories = await Category.find({ isDeleted: false }).sort({
-      createdAt: -1,
-    });
+    const { page, limit, q, parent } = req.query;
 
-    // sendBrevoEmail({
-    //   sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
-    //   to: [{ email: "victorgiadom29@gmail.com", name: "Victor Cliff" }],
-    //   subject: "Test Mail",
-    //   templateName: "testTemp",
-    //   parameters: { homieeLink: "https://gosolar.ng", SupportAgentName: "Jessy" },
-    // });
+    const query = { isDeleted: false };
+
+    if (q) {
+      query.name = { $regex: q, $options: "i" };
+    }
+
+    if (parent !== undefined) {
+      if (parent === "null" || parent === "none") {
+        query.parent = null;
+      } else if (parent === "any") {
+        query.parent = { $ne: null };
+      } else if (mongoose.Types.ObjectId.isValid(parent)) {
+        query.parent = parent;
+      }
+    }
+
+    const result = await paginate(Category, query, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      populate: { path: "parent", select: "name slug" },
+      sort: { sortOrder: 1, createdAt: -1 },
+    });
 
     return res.status(200).json({
       success: true,
       message: "Categories fetch successful",
-      categories,
+      categories: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// get categories as a nested tree: top-level + their subcategories
+exports.getCategoryTree = async (req, res, next) => {
+  try {
+    const allCategories = await Category.find({ isDeleted: false }).sort({
+      sortOrder: 1,
+    });
+
+    const topLevel = allCategories.filter((c) => !c.parent);
+    const tree = topLevel.map((parent) => ({
+      ...parent.toObject(),
+      subcategories: allCategories.filter(
+        (c) => c.parent && c.parent.toString() === parent._id.toString(),
+      ),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      message: "Category tree fetch successful",
+      categories: tree,
     });
   } catch (error) {
     return next(error);
@@ -88,7 +135,9 @@ exports.getCategory = async (req, res, next) => {
     const category = await Category.findOne({ isDeleted: false, _id: id });
 
     if (!category) {
-      return next(new ErrorResponse("Category not found!", 404, "validationError"));
+      return next(
+        new ErrorResponse("Category not found!", 404, "validationError"),
+      );
     }
 
     return res.status(200).json({
@@ -106,17 +155,23 @@ exports.updateCategory = async (req, res, next) => {
     const { name, description, categoryId } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(categoryId)) {
-      return next(new ErrorResponse("Invalid category ID!", 400, "validationError"));
+      return next(
+        new ErrorResponse("Invalid category ID!", 400, "validationError"),
+      );
     }
 
     const categoryToBeUpdated = await Category.findById(categoryId);
 
     if (!categoryToBeUpdated) {
-      return next(new ErrorResponse("Category not found!", 404, "validationError"));
+      return next(
+        new ErrorResponse("Category not found!", 404, "validationError"),
+      );
     }
 
     if (categoryToBeUpdated?.isDeleted) {
-      return next(new ErrorResponse("Category not found!", 404, "validationError"));
+      return next(
+        new ErrorResponse("Category not found!", 404, "validationError"),
+      );
     }
 
     if (name) {
@@ -126,8 +181,8 @@ exports.updateCategory = async (req, res, next) => {
             new ErrorResponse(
               "The field 'Name', cannot be more than 100 characters long and lesser than 2 characters",
               400,
-              "validationError"
-            )
+              "validationError",
+            ),
           );
         }
       }
@@ -142,8 +197,8 @@ exports.updateCategory = async (req, res, next) => {
             new ErrorResponse(
               "The field 'Description', cannot be more than 250 characters long and lesser than 5 characters",
               400,
-              "validationError"
-            )
+              "validationError",
+            ),
           );
         }
       }
@@ -171,7 +226,7 @@ exports.updateCategory = async (req, res, next) => {
     const updatedCategory = await Category.findOneAndUpdate(
       { _id: categoryId },
       { ...cleanedData },
-      { new: true }
+      { new: true },
     );
 
     if (updatedCategory) {
@@ -196,12 +251,16 @@ exports.deleteCategory = async (req, res, next) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return next(new ErrorResponse("Invalid category ID!", 400, "validationError"));
+      return next(
+        new ErrorResponse("Invalid category ID!", 400, "validationError"),
+      );
     }
 
     const categoryToBeUpdated = await Category.findById(id);
     if (!categoryToBeUpdated) {
-      return next(new ErrorResponse("Category not found!", 404, "validationError"));
+      return next(
+        new ErrorResponse("Category not found!", 404, "validationError"),
+      );
     }
 
     categoryToBeUpdated.isDeleted = true;

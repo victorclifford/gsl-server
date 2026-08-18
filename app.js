@@ -15,7 +15,12 @@ const categoryRoutes = require("./routes/categoriesRoutes");
 const productRoutes = require("./routes/productsRoutes");
 const blogRoutes = require("./routes/blogRoutes");
 const userRoutes = require("./routes/userRoutes");
+const packageRoutes = require("./routes/packageRoutes");
+const quoteRoutes = require("./routes/quoteRoutes");
+const projectRoutes = require("./routes/projectRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
 const offerRoutes = require("./routes/offerRoutes");
+const bannerRoutes = require("./routes/bannerRoutes");
 
 const origin = [
   "http://localhost:3000",
@@ -31,7 +36,7 @@ app.use(express.json());
 
 //* helmet security layers
 //enebling the X-XSS-Protection header on HTTP responses to help prevent cross-site scripting (XSS) attacks.
-app.use(helmet.xssFilter()),
+(app.use(helmet.xssFilter()),
   //setting the X-Frame-Options header on HTTP responses to help prevent clickjacking attacks.
   app.use(helmet.frameguard({ action: "deny" })),
   // MIME sniffing attacks..
@@ -44,8 +49,8 @@ app.use(helmet.xssFilter()),
       maxAge: 63072000, // 2 years in seconds
       includeSubDomains: true, // include subdomains
       preload: true, // enable HSTS preloading
-    })
-  );
+    }),
+  ));
 //routes
 //app routes here...
 app.use("/api/auth", authRoutes);
@@ -54,7 +59,12 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/blogs", blogRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/packages", packageRoutes);
+app.use("/api/quotes", quoteRoutes);
+app.use("/api/projects", projectRoutes);
+app.use("/api/reviews", reviewRoutes);
 app.use("/api/offers", offerRoutes);
+app.use("/api/banners", bannerRoutes);
 
 app.get("/", (req, res) => {
   res.send("<h3>GO_SOLAR: server running...</h3>");
@@ -84,7 +94,7 @@ const startServer = async () => {
   try {
     await connectDB();
     app.listen(process.env.PORT || 5050, () => {
-      console.log("server started on port 5050...");
+      console.log(`server started on port ${process.env.PORT || 5050}...`);
     });
   } catch (error) {
     console.log(error);

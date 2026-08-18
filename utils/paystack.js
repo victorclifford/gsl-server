@@ -1,5 +1,3 @@
-const fetch = require("node-fetch");
-
 class PaystackAPI {
   constructor() {
     this.baseURL = "https://api.paystack.co/";

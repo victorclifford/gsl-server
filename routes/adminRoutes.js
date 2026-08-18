@@ -5,7 +5,10 @@ const {
   updateCategory,
   deleteCategory,
 } = require("../controllers/CategoryController.js");
-const { authorizeSuperAdmin, authorizeAdmin } = require("../middlewares/authorizations");
+const {
+  authorizeSuperAdmin,
+  authorizeAdmin,
+} = require("../middlewares/authorizations");
 const {
   addProducts,
   updateProduct,
@@ -26,7 +29,7 @@ router.patch("/update-category", authorizeSuperAdmin, updateCategory);
 router.delete("category/:id", authorizeSuperAdmin, deleteCategory);
 
 //add product
-const uploadFields = upload.fields([{ name: "images", maxCount: 3 }]);
+const uploadFields = upload.fields([{ name: "images", maxCount: 5 }]);
 router.post("/add-product", authorizeSuperAdmin, uploadFields, addProducts);
 
 //update product(details)
@@ -39,7 +42,7 @@ router.patch(
   "/update-product-image",
   authorizeSuperAdmin,
   upload.single("updateImg"),
-  updateProductImage
+  updateProductImage,
 );
 
 //add blog
@@ -47,7 +50,7 @@ router.post(
   "/add-blog",
   authorizeSuperAdmin,
   upload.single("blogImage"),
-  BlogController.createBlog
+  BlogController.createBlog,
 );
 
 //update blog
@@ -55,15 +58,29 @@ router.patch(
   "/update-blog",
   authorizeSuperAdmin,
   upload.single("updateImage"),
-  BlogController.updateBlog
+  BlogController.updateBlog,
 );
 
 router.get("/all-orders", authorizeAdmin, OrderController.getAllOrders);
 
 router.get("/users", authorizeAdmin, AdminController.getUsers);
 
+router.post("/create-account", authorizeAdmin, AdminController.createAccount);
+
 router.get("/users/:userid", authorizeAdmin, AdminController.getUser);
 
-router.get("/dashboard-stats", authorizeAdmin, AdminController.getDashboardStats);
+router.get("/admins", authorizeAdmin, AdminController.getAdminUsers);
+
+router.patch(
+  "/users/:userid/role",
+  authorizeSuperAdmin,
+  AdminController.updateUserRole,
+);
+
+router.get(
+  "/dashboard-stats",
+  authorizeAdmin,
+  AdminController.getDashboardStats,
+);
 
 module.exports = router;

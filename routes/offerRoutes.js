@@ -1,23 +1,25 @@
 const express = require("express");
-const { authorizeAdmin } = require("../middlewares/authorizations");
 const {
+  getActiveOffers,
+  getAllOffersAdmin,
   createOffer,
-  getOffers,
-  getOffer,
   updateOffer,
   deleteOffer,
-} = require("../controllers/OfferController.js");
+} = require("../controllers/OfferController");
+const {
+  authorizeSuperAdmin,
+  authorizeAdmin,
+} = require("../middlewares/authorizations");
 
 const router = express.Router();
 
-router.get("/", getOffers);
+// Public routes
+router.get("/", getActiveOffers);
 
-router.get("/:id", getOffer);
-
-router.post("/create-offer", authorizeAdmin, createOffer);
-
-router.put("/update-offer/:offerId", authorizeAdmin, updateOffer);
-
-router.delete("/delete-offer/:id", authorizeAdmin, deleteOffer);
+// Admin routes
+router.get("/all", authorizeAdmin, getAllOffersAdmin);
+router.post("/", authorizeSuperAdmin, createOffer);
+router.put("/:id", authorizeSuperAdmin, updateOffer);
+router.delete("/:id", authorizeSuperAdmin, deleteOffer);
 
 module.exports = router;
