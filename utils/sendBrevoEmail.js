@@ -25,7 +25,8 @@ async function sendBrevoEmail(options) {
 
   try {
     const htmlContent = await loadTemplate(templateName, parameters);
-    const emailFrom = process.env.EMAIL_FROM;
+    const emailFrom = (process.env.EMAIL_FROM || "").trim();
+    const brevoApiKey = (process.env.BREVO_API_KEY || "").trim();
     console.log({ emailFrom });
 
     const data = {
@@ -38,12 +39,12 @@ async function sendBrevoEmail(options) {
 
     const response = await axios.post(BREVO_API_URL, data, {
       headers: {
-        "api-key": process.env.BREVO_API_KEY,
+        "api-key": brevoApiKey,
         "Content-Type": "application/json",
       },
     });
 
-    console.log("Email sent:", response?.data);
+    console.log("Email sent:", response?.data?.messageId || "N/A");
   } catch (error) {
     console.error(
       "Error sending email:",
