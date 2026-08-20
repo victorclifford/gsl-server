@@ -152,7 +152,8 @@ exports.getCategory = async (req, res, next) => {
 
 exports.updateCategory = async (req, res, next) => {
   try {
-    const { name, description, categoryId } = req.body;
+    const { name, description } = req.body;
+    const categoryId = req.params.id || req.body.categoryId;
 
     if (!mongoose.Types.ObjectId.isValid(categoryId)) {
       return next(
@@ -209,8 +210,7 @@ exports.updateCategory = async (req, res, next) => {
         const value = updateData[key];
         if (
           value !== undefined &&
-          value !== null &&
-          value !== "" &&
+          (key === "parent" || (value !== null && value !== "")) &&
           !(Array.isArray(value) && value.length === 0)
         ) {
           acc[key] = value;

@@ -18,6 +18,7 @@ router.post("/", createQuote);
 // Admin lead management
 router.get("/", authorizeAdmin, getAllQuotes);
 router.get("/:id", authorizeAdmin, getQuote);
+router.put("/:id", authorizeAdmin, updateQuoteStatus);
 router.patch("/:id", authorizeAdmin, updateQuoteStatus);
 router.delete("/:id", authorizeAdmin, deleteQuote);
 

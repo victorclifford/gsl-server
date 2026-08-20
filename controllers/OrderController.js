@@ -297,7 +297,16 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
   try {
     const { trackingLevel, trackingId } = req.body;
 
-    const orderToBeUpdated = await OrderModel.findOne({ trackingId });
+    let orderToBeUpdated;
+    if (mongoose.Types.ObjectId.isValid(trackingId)) {
+      orderToBeUpdated = await OrderModel.findOne({ trackingId });
+    } else {
+      const trackingDoc = await TrackingIdModel.findOne({ tracking_id: trackingId });
+      if (trackingDoc) {
+        orderToBeUpdated = await OrderModel.findOne({ trackingId: trackingDoc._id });
+      }
+    }
+
     if (!orderToBeUpdated) {
       return next(
         new ErrorResponse("Order not found!", 404, "validationError"),
@@ -420,11 +429,21 @@ exports.getUserOrders = async (req, res, next) => {
 exports.getOrder = async (req, res, next) => {
   try {
     const { orderid } = req?.params;
-    const order = await OrderModel.findOne({ _id: orderid })
+
+    let query = {};
+    if (mongoose.Types.ObjectId.isValid(orderid)) {
+      query._id = orderid;
+    } else {
+      const trackingDoc = await TrackingIdModel.findOne({ tracking_id: orderid });
+      if (trackingDoc) {
+        query.trackingId = trackingDoc._id;
+      } else {
+        return next(new ErrorResponse("Order not found!", 404, "notFound"));
+      }
+    }
+
+    const order = await OrderModel.findOne(query)
       .populate(["user", "trackingId", "products.product"])
-      .sort({
-        createdAt: -1,
-      })
       .exec();
 
     if (!order) {
