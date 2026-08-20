@@ -27,7 +27,7 @@ router.get("/:id", getCategory);
 router.post("/", authorizeUser, authorizeAdmin, addCategory);
 
 // ADMIN: update category
-router.put("/", authorizeUser, authorizeAdmin, updateCategory);
+router.put("/:id", authorizeUser, authorizeAdmin, updateCategory);
 
 // ADMIN: soft delete category
 router.delete("/:id", authorizeUser, authorizeAdmin, deleteCategory);

@@ -1,4 +1,5 @@
 const OfferModel = require("../models/OfferModel");
+const ProductModel = require("../models/ProductModel");
 const ErrorResponse = require("../utils/errorResponse");
 
 // @desc    Get active sales offers (Public)
@@ -94,6 +95,51 @@ exports.deleteOffer = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Sales offer deleted successfully",
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// @desc    Add products to a sales offer
+// @route   POST /api/offers/add-products
+// @access  Private/Admin
+exports.addProductsToOffer = async (req, res, next) => {
+  try {
+    const { offer: offerId, products: productIds } = req.body;
+
+    if (!offerId || !Array.isArray(productIds)) {
+      return next(new ErrorResponse("Please provide an offer ID and an array of product IDs", 400));
+    }
+
+    const offer = await OfferModel.findById(offerId);
+    if (!offer) {
+      return next(new ErrorResponse("Sales offer not found", 404));
+    }
+
+    // 1. Update the currentOffer and discountPrice on each product
+    const products = await ProductModel.find({ _id: { $in: productIds }, isDeleted: false });
+    
+    for (const product of products) {
+      product.currentOffer = offer._id;
+      // Calculate discount price based on offer percentageOff
+      product.discountPrice = Math.round(product.price * (1 - offer.percentageOff / 100));
+      await product.save();
+    }
+
+    // 2. Add products to the offer's products array, avoiding duplicates
+    const existingProductIds = offer.products.map(p => p.toString());
+    const newProductIds = productIds.filter(id => !existingProductIds.includes(id));
+    
+    if (newProductIds.length > 0) {
+      offer.products.push(...newProductIds);
+      await offer.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Products added to offer successfully",
+      offer,
     });
   } catch (error) {
     return next(error);

@@ -5,6 +5,7 @@ const {
   createOffer,
   updateOffer,
   deleteOffer,
+  addProductsToOffer,
 } = require("../controllers/OfferController");
 const {
   authorizeSuperAdmin,
@@ -19,6 +20,7 @@ router.get("/", getActiveOffers);
 // Admin routes
 router.get("/all", authorizeAdmin, getAllOffersAdmin);
 router.post("/", authorizeSuperAdmin, createOffer);
+router.post("/add-products", authorizeAdmin, addProductsToOffer);
 router.put("/:id", authorizeSuperAdmin, updateOffer);
 router.delete("/:id", authorizeSuperAdmin, deleteOffer);
 
