@@ -1,14 +1,17 @@
 const express = require("express");
+const upload = require("../utils/multer");
 const BlogController = require("../controllers/BlogController");
+const { authorizeAdmin } = require("../middlewares/authorizations");
 
 const router = express.Router();
 
-// get blogs
+// Public routes
 router.get("/", BlogController.getBlogs);
-
-// get single blog
 router.get("/:blogid", BlogController.getBlog);
 
-router.delete("/:blogid", BlogController.deleteBlog);
+// Admin routes — RESTful CRUD matching frontend mutations
+router.post("/", authorizeAdmin, upload.single("image"), BlogController.createBlog);
+router.put("/:blogid", authorizeAdmin, upload.single("image"), BlogController.updateBlog);
+router.delete("/:blogid", authorizeAdmin, BlogController.deleteBlog);
 
 module.exports = router;

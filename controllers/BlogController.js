@@ -6,7 +6,19 @@ const { slugify } = require("../utils/helpers.js");
 const { generateRandomCode } = require("../utils/helpers");
 const fs = require("fs");
 const mongoose = require("mongoose");
-const { cloudinary } = require("../utils/cloudinary");
+const { cloudinary, uploadImage } = require("../utils/cloudinary");
+
+const calculateExcerpt = (content) => {
+  if (!content) return "";
+  const plainText = content.replace(/<[^>]*>/g, "");
+  return plainText.length > 180 ? plainText.slice(0, 180) + "..." : plainText;
+};
+
+const calculateReadTime = (content) => {
+  if (!content) return 1;
+  const words = content.split(/\s+/).length;
+  return Math.max(1, Math.ceil(words / 200));
+};
 
 const {
   createBlogValidationSchema,
@@ -16,7 +28,7 @@ const {
 //create blog
 exports.createBlog = async (req, res, next) => {
   try {
-    const { title, tags, content, author } = req.body;
+    const { title, tags, content, author, excerpt } = req.body;
 
     // console.log({ tags });
 
@@ -109,34 +121,23 @@ exports.createBlog = async (req, res, next) => {
       tags: parsedTags,
       title,
       author,
+      excerpt: excerpt || calculateExcerpt(content),
+      readTime: calculateReadTime(content),
     };
 
     //create category with Category model
     const newBlog = await BlogModel.create({ ...blogData });
     if (newBlog) {
-      //handle file saveing
-      //   console.log("RF::", req.file);
       if (req.file) {
-        const uploadedFile = await cloudinary.uploader.upload(req.file.path, {
+        const uploadResult = await uploadImage(req.file, {
           folder: "goSolar/blog-images",
         });
 
-        if (uploadedFile?.public_id && uploadedFile?.secure_url) {
-          newBlog.image = uploadedFile.secure_url;
-          newBlog.imageId = uploadedFile.public_id;
+        if (uploadResult?.public_id && uploadResult?.url) {
+          newBlog.image = uploadResult.url;
+          newBlog.imageId = uploadResult.public_id;
           await newBlog.save();
         }
-
-        //delete images from project folder storage(uploads/), to free space
-
-        fs.unlink(req.file.path, (err) => {
-          if (err) {
-            console.error("err deleting file in project folder::", err);
-          }
-          console.log(
-            `${req.file.path} has been deleted after successful cloud upload`
-          );
-        });
       }
 
       // const allBlogs = await BlogModel.find({}).sort({ createdAt: -1 }).exec();
@@ -156,7 +157,8 @@ exports.createBlog = async (req, res, next) => {
 //update blog
 exports.updateBlog = async (req, res, next) => {
   try {
-    let { title, tags, content, author, blogId } = req.body;
+    const blogId = req.params.blogid || req.body.blogId || req.body.id;
+    let { title, tags, content, author, excerpt } = req.body;
 
     // console.log({ tags });
 
@@ -186,7 +188,7 @@ exports.updateBlog = async (req, res, next) => {
     }
 
     if (tags) {
-      const parsedTags = JSON.parse(tags);
+      const parsedTags = typeof tags === "string" ? JSON.parse(tags) : tags;
       console.log(parsedTags);
 
       if (!Array.isArray(parsedTags)) {
@@ -268,6 +270,15 @@ exports.updateBlog = async (req, res, next) => {
       });
 
       content = sanitizedBlogContent;
+      req.body.content = content;
+      req.body.readTime = calculateReadTime(content);
+      if (!excerpt) {
+        req.body.excerpt = calculateExcerpt(content);
+      }
+    }
+
+    if (excerpt !== undefined) {
+      req.body.excerpt = excerpt;
     }
 
     //find blog to update
@@ -299,7 +310,10 @@ exports.updateBlog = async (req, res, next) => {
       return cleanedData;
     };
 
-    const cleanedData = cleanUpdateData(req.body);
+    const updateBody = { ...req.body };
+    delete updateBody.blogId;
+    delete updateBody.id;
+    const cleanedData = cleanUpdateData(updateBody);
     console.log({ cleanedData });
 
     //update document after validations for available fields are complete
@@ -310,31 +324,23 @@ exports.updateBlog = async (req, res, next) => {
     );
 
     //handle file saveing
-    //   console.log("RF::", req.file);
     if (req.file) {
       console.log("There is an img to be updated...");
-      const imgUpdate = await cloudinary.uploader.upload(req.file.path, {
-        public_id: updatedBlog.imageId,
-        overwrite: true,
-        invalidate: true,
-      });
+      const options = {
+        folder: "goSolar/blog-images",
+      };
+      if (updatedBlog.imageId) {
+        options.public_id = updatedBlog.imageId;
+        options.overwrite = true;
+        options.invalidate = true;
+      }
+      const imgUpdate = await uploadImage(req.file, options);
 
-      if (imgUpdate?.public_id && imgUpdate?.secure_url) {
-        updatedBlog.image = imgUpdate.secure_url;
+      if (imgUpdate?.public_id && imgUpdate?.url) {
+        updatedBlog.image = imgUpdate.url;
         updatedBlog.imageId = imgUpdate.public_id;
         await updatedBlog.save();
       }
-
-      //delete images from project folder storage(uploads/), to free space
-
-      fs.unlink(req.file.path, (err) => {
-        if (err) {
-          console.error("err deleting file in project folder::", err);
-        }
-        console.log(
-          `${req.file.path} has been deleted after successful cloud upload`
-        );
-      });
     }
 
     // const allBlogs = await BlogModel.find({}).sort({ createdAt: -1 }).exec();

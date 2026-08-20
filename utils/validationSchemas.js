@@ -105,6 +105,7 @@ exports.addProductSchema = yup.object().shape({
 exports.createBlogValidationSchema = yup.object().shape({
   title: yup.string().required().min(3).max(120),
   author: yup.string().required().min(3).max(100),
+  excerpt: yup.string().optional().nullable(),
 });
 
 exports.addOrderSchema = yup.object().shape({
