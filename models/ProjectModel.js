@@ -29,6 +29,11 @@ const projectSchema = new mongoose.Schema(
       type: String,
       default: "/images/bg/hero-bg.jpg",
     },
+    // Up to 5 project gallery images (Cloudinary URLs)
+    images: {
+      type: [String],
+      default: [],
+    },
     specs: {
       inverter: { type: String, default: "5 kVA" },
       pv: { type: String, default: "6 kWp" },

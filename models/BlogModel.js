@@ -33,6 +33,12 @@ const blogSchema = new Schema(
       type: Array,
       default: [],
     },
+    excerpt: {
+      type: String,
+    },
+    readTime: {
+      type: Number,
+    },
     isDeleted: {
       type: Boolean,
       default: false,
