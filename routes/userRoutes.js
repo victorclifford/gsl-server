@@ -6,6 +6,8 @@ const router = express.Router();
 
 // create order
 router.post("/orders/create-order", authorizeUser, OrderController.createOrder);
+router.post("/orders/initialize-payment", authorizeUser, OrderController.initializeOrder);
+router.post("/orders/verify-payment", authorizeUser, OrderController.verifyOrderPayment);
 
 router.get("/orders/user-orders", authorizeUser, OrderController.getUserOrders);
 

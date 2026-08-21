@@ -93,6 +93,18 @@ class PaystackAPI {
     }
   }
 
+  async initializeTransaction(payload) {
+    try {
+      const response = await this.processRequest("transaction/initialize", {
+        method: "POST",
+        body: payload,
+      });
+      return response;
+    } catch (error) {
+      throw new Error(`Failed to initialize transaction: ${error.message}`);
+    }
+  }
+
   async getAllTransactions() {
     try {
       const response = await this.processRequest("transaction", {

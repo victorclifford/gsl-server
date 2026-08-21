@@ -459,3 +459,295 @@ exports.getOrder = async (req, res, next) => {
     return next(error);
   }
 };
+
+exports.initializeOrder = async (req, res, next) => {
+  try {
+    const {
+      products,
+      paymentMethod,
+      totalPricePaid,
+      deliveryDetails,
+    } = req.body;
+
+    const user = req.user;
+    if (!user) {
+      return next(new ErrorResponse("Please login to continue!", 401, "unauthorized"));
+    }
+
+    if (paymentMethod.toLowerCase() !== "paystack") {
+      return next(new ErrorResponse("Only Paystack payment method is supported on this endpoint", 400, "validationError"));
+    }
+
+    for (const product of products) {
+      if (product?.qty < 1 || !product?.qty) {
+        return next(new ErrorResponse("Invalid product Quantity!", 400, "validationError"));
+      }
+
+      if (!product?.deliveryFee) {
+        return next(new ErrorResponse(`Delivery fee for product with ID:${product?.product} is required!`, 400, "validationError"));
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(product?.product)) {
+        return next(new ErrorResponse("Invalid product ID!", 400, "validationError"));
+      }
+
+      // Check if products to be purchased still exists or is out of stock
+      const productExists = await ProductModel.findOne({
+        _id: product.product,
+        isDeleted: false,
+      });
+      if (!productExists) {
+        return next(new ErrorResponse(`product with ID: ${product.product}, may have been deleted already!`, 404, "validationError"));
+      }
+
+      if (productExists.quantityInStock < product.qty) {
+        return next(new ErrorResponse(`Quantity requested(${product.qty}), is above the quantity in stock(${productExists.quantityInStock}), for the product: ${productExists.name}!`, 404, "validationError"));
+      }
+    }
+
+    try {
+      await addOrderSchema.validate(req.body, { abortEarly: true });
+    } catch (e) {
+      e.statusCode = 400;
+      return next(e);
+    }
+
+    const PayStackAPI = new PaystackAPI();
+    const paystackPayload = {
+      email: user.email,
+      amount: Math.round(totalPricePaid * 100), // in kobo
+      callback_url: `${config.HOMEPAGE}/orders/success`,
+    };
+
+    const initializeResponse = await PayStackAPI.initializeTransaction(paystackPayload);
+    if (!initializeResponse || !initializeResponse.status) {
+      return next(new ErrorResponse("Failed to initialize Paystack transaction.", 400, "validationError"));
+    }
+
+    // Create order with pending status
+    const newOrder = await OrderModel.create({
+      ...req.body,
+      user: user?._id,
+      paymentReference: initializeResponse.data.reference,
+      paymentStatus: "pending",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment initialized successfully",
+      authorization_url: initializeResponse.data.authorization_url,
+      reference: initializeResponse.data.reference,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.verifyOrderPayment = async (req, res, next) => {
+  try {
+    const { paymentReference } = req.body;
+    const user = req.user;
+    if (!user) {
+      return next(new ErrorResponse("Please login to continue!", 401, "unauthorized"));
+    }
+
+    if (!paymentReference) {
+      return next(new ErrorResponse("Payment reference is required", 400, "validationError"));
+    }
+
+    // Find the order
+    const order = await OrderModel.findOne({ paymentReference }).populate("user");
+    if (!order) {
+      return next(new ErrorResponse("Order not found!", 404, "notFound"));
+    }
+
+    // If already marked as paid, return success (idempotent)
+    if (order.paymentStatus === "paid") {
+      return res.status(200).json({
+        success: true,
+        message: "Payment verified successfully",
+        order,
+      });
+    }
+
+    // Call Paystack API to verify
+    const PayStackAPI = new PaystackAPI();
+    const verifiedPayment = await PayStackAPI.verifyPayment(paymentReference);
+    console.log({ verifiedPayment });
+
+    if (!verifiedPayment || !verifiedPayment.status || verifiedPayment.data.status !== "success") {
+      order.paymentStatus = "failed";
+      await order.save();
+      return next(new ErrorResponse("Payment verification failed. The transaction was not successful.", 400, "validationError"));
+    }
+
+    // Verify amount matches order amount (amount is in kobo)
+    const expectedKoboAmount = Math.round(order.totalPricePaid * 100);
+    if (verifiedPayment.data.amount !== expectedKoboAmount) {
+      order.paymentStatus = "failed";
+      await order.save();
+      return next(new ErrorResponse("Payment verification failed. Paid amount does not match the order total.", 400, "validationError"));
+    }
+
+    // If verified, finalize order:
+    // 1. Decrement stock
+    let purchasedProducts = [];
+    let itemsArray = [];
+
+    for (const product of order.products) {
+      const productExists = await ProductModel.findOne({
+        _id: product.product,
+        isDeleted: false,
+      });
+
+      if (!productExists) {
+        return next(new ErrorResponse(`Product with ID: ${product.product} no longer exists.`, 404, "validationError"));
+      }
+
+      if (productExists.quantityInStock < product.qty) {
+        return next(new ErrorResponse(`Quantity requested for ${productExists.name} exceeds available stock.`, 400, "validationError"));
+      }
+
+      productExists.quantityInStock = productExists.quantityInStock - parseInt(product.qty);
+      purchasedProducts.push(productExists);
+
+      itemsArray.push({
+        itemName: productExists.name,
+        itemQty: product.qty,
+        itemPrice: productExists.price,
+        discountPercentageOff: "0% OFF",
+        delivery: product.deliveryFee,
+      });
+    }
+
+    // Save subtracted quantity of purchased products
+    for (const product of purchasedProducts) {
+      await product.save();
+    }
+
+    // Update order status
+    order.paymentStatus = "paid";
+    order.trackingStatus = "Processing";
+
+    // 2. Generate and save tracking ID
+    const trackingIdGenerator = new idGenerator();
+    const trackingID = await trackingIdGenerator.generateTrackingID(
+      TrackingIdModel,
+      order._id,
+    );
+
+    const trackingIdDoc = await TrackingIdModel.findOne({
+      tracking_id: trackingID,
+    });
+    order.trackingId = trackingIdDoc._id;
+    await order.save();
+
+    // 3. Send confirmation emails (mirrors lines 168-245 in createOrder)
+    const { suiteNumber, streetAddress, city, zipCode } = order.deliveryDetails;
+    const cityAndZip = `${city} ${zipCode}`;
+    let totDeliveryFee = 0;
+    let totCost = 0;
+    let subTotalPrice = 0;
+    itemsArray.forEach((itm) => {
+      totDeliveryFee = totDeliveryFee + itm.delivery;
+      totCost = totCost + itm.itemPrice * itm.itemQty;
+    });
+
+    subTotalPrice = totCost;
+    const totCostWithDelivery = totCost + totDeliveryFee;
+
+    const estimatedDaysForDelivery = 7;
+    const estimatedDateOfDelivery = addDaysToCurrentDate(
+      estimatedDaysForDelivery,
+    );
+    const formattedDeliveryDateEstimate = dateStringToReadableDate(
+      estimatedDateOfDelivery,
+    );
+
+    let orderConfirmedEmailData = {
+      from: config.EMAIL_FROM,
+      to: order.user.email,
+      name: order.user.firstname,
+      subject: "Order Confirmed",
+      template: "order-confirmed",
+      trackingId: trackingID,
+      items: itemsArray,
+      deliveryFee: totDeliveryFee.toLocaleString("en-US", {
+        style: "currency",
+        currency: "NGN",
+      }),
+      totalCost: totCostWithDelivery.toLocaleString("en-US", {
+        style: "currency",
+        currency: "NGN",
+      }),
+      subTotalPrice: subTotalPrice.toLocaleString("en-US", {
+        style: "currency",
+        currency: "NGN",
+      }),
+      suiteNumber,
+      streetAddress,
+      cityAndZip,
+      estimatedDeliveryDate: formattedDeliveryDateEstimate,
+    };
+
+    sendBrevoEmail({
+      to: [{ email: order.user.email, name: order.user.firstname }],
+      templateName: "order-confirmed",
+      parameters: {
+        SupportAgentName: "Jessy",
+      },
+      ...orderConfirmedEmailData,
+    });
+
+    // Admins email copy
+    const admins = await UserModel.find({
+      $or: [{ isAdmin: true }, { isSuperAdmin: true }],
+    });
+
+    for (const admin of admins) {
+      let adminEmailData = {
+        from: config.EMAIL_FROM,
+        to: admin.email,
+        name: admin.firstname,
+        subject: "Order Received",
+        template: "order-received",
+        trackingId: trackingID,
+        items: itemsArray,
+        deliveryFee: totDeliveryFee.toLocaleString("en-US", {
+          style: "currency",
+          currency: "NGN",
+        }),
+        totalCost: totCostWithDelivery.toLocaleString("en-US", {
+          style: "currency",
+          currency: "NGN",
+        }),
+        subTotalPrice: subTotalPrice.toLocaleString("en-US", {
+          style: "currency",
+          currency: "NGN",
+        }),
+        suiteNumber,
+        streetAddress,
+        cityAndZip,
+        estimatedDeliveryDate: formattedDeliveryDateEstimate,
+      };
+
+      sendBrevoEmail({
+        to: [{ email: admin.email, name: admin.firstname }],
+        templateName: "order-received",
+        parameters: {
+          SupportAgentName: "Jessy",
+        },
+        ...adminEmailData,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Order placed and payment verified successfully",
+      order,
+    });
+
+  } catch (error) {
+    return next(error);
+  }
+};

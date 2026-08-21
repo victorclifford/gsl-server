@@ -46,6 +46,12 @@ const OrderModel = new Schema(
       type: String,
     },
 
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed"],
+      default: "pending",
+    },
+
     //processing: the order has just been made, and package has not been sent out for delivery
     //cancelled: order has been cancelled. either by buyer or seller
     //delivered: package has been sent out for delivery
