@@ -18,10 +18,12 @@ const blogSchema = new Schema(
       required: true,
     },
     author: {
-      // type: Schema.Types.ObjectId,
-      // ref: "User",
       type: String,
       required: true,
+    },
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
     },
     image: {
       type: String,
@@ -43,8 +45,12 @@ const blogSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    isPublished: {
+      type: Boolean,
+      default: true,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Define model for the blog post
