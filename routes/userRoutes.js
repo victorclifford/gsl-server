@@ -8,6 +8,7 @@ const router = express.Router();
 router.post("/orders/create-order", authorizeUser, OrderController.createOrder);
 router.post("/orders/initialize-payment", authorizeUser, OrderController.initializeOrder);
 router.post("/orders/verify-payment", authorizeUser, OrderController.verifyOrderPayment);
+router.post("/payments/paystack-webhook", OrderController.paystackWebhook);
 
 router.get("/orders/user-orders", authorizeUser, OrderController.getUserOrders);
 

@@ -14,7 +14,17 @@ const OrderModel = new Schema(
     },
     products: [
       {
-        product: { type: Schema.ObjectId, ref: "Product" },
+        product: {
+          type: Schema.ObjectId,
+          required: true,
+          refPath: "products.itemModel",
+        },
+        itemModel: {
+          type: String,
+          required: true,
+          enum: ["Product", "Package"],
+          default: "Product",
+        },
         qty: Number,
         deliveryFee: Number,
       },
