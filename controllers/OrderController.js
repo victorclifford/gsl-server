@@ -47,8 +47,7 @@ const calculateBackendOrderTotal = async (products) => {
     shippingFee += item.deliveryFee * item.qty;
   }
 
-  const tax = Math.round(subtotal * 0.05); // 5% VAT
-  const total = subtotal + shippingFee + tax;
+  const total = subtotal + shippingFee;
   return Math.max(0, total);
 };
 
@@ -84,7 +83,7 @@ exports.createOrder = async (req, res, next) => {
         );
       }
 
-      if (!item?.deliveryFee) {
+      if (item?.deliveryFee === undefined || item?.deliveryFee === null) {
         return next(
           new ErrorResponse(
             `Deleivery fee for product with ID:${item?.product} is required !`,
@@ -395,9 +394,13 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
     if (mongoose.Types.ObjectId.isValid(trackingId)) {
       orderToBeUpdated = await OrderModel.findOne({ trackingId });
     } else {
-      const trackingDoc = await TrackingIdModel.findOne({ tracking_id: trackingId });
+      const trackingDoc = await TrackingIdModel.findOne({
+        tracking_id: trackingId,
+      });
       if (trackingDoc) {
-        orderToBeUpdated = await OrderModel.findOne({ trackingId: trackingDoc._id });
+        orderToBeUpdated = await OrderModel.findOne({
+          trackingId: trackingDoc._id,
+        });
       }
     }
 
@@ -490,6 +493,11 @@ exports.getAllOrders = async (req, res, next) => {
       populate: ["user", "trackingId", "products.product"],
     });
 
+    await OrderModel.populate(orders, {
+      path: "products.product.constituents.product",
+      model: "Product",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Orders fetch successful",
@@ -510,6 +518,12 @@ exports.getUserOrders = async (req, res, next) => {
         createdAt: -1,
       })
       .exec();
+
+    await OrderModel.populate(orders, {
+      path: "products.product.constituents.product",
+      model: "Product",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Orders fetch successful",
@@ -528,7 +542,9 @@ exports.getOrder = async (req, res, next) => {
     if (mongoose.Types.ObjectId.isValid(orderid)) {
       query._id = orderid;
     } else {
-      const trackingDoc = await TrackingIdModel.findOne({ tracking_id: orderid });
+      const trackingDoc = await TrackingIdModel.findOne({
+        tracking_id: orderid,
+      });
       if (trackingDoc) {
         query.trackingId = trackingDoc._id;
       } else {
@@ -544,6 +560,11 @@ exports.getOrder = async (req, res, next) => {
       return next(new ErrorResponse("Order not found!", 404, "notFound"));
     }
 
+    await OrderModel.populate(order, {
+      path: "products.product.constituents.product",
+      model: "Product",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Order fetch successful",
@@ -556,34 +577,52 @@ exports.getOrder = async (req, res, next) => {
 
 exports.initializeOrder = async (req, res, next) => {
   try {
-    const {
-      products,
-      paymentMethod,
-      deliveryDetails,
-    } = req.body;
+    const { products, paymentMethod, deliveryDetails } = req.body;
 
     const user = req.user;
     if (!user) {
-      return next(new ErrorResponse("Please login to continue!", 401, "unauthorized"));
+      return next(
+        new ErrorResponse("Please login to continue!", 401, "unauthorized"),
+      );
     }
 
     if (paymentMethod.toLowerCase() !== "paystack") {
-      return next(new ErrorResponse("Only Paystack payment method is supported on this endpoint", 400, "validationError"));
+      return next(
+        new ErrorResponse(
+          "Only Paystack payment method is supported on this endpoint",
+          400,
+          "validationError",
+        ),
+      );
     }
 
     let resolvedProducts = [];
 
     for (const item of products) {
       if (item?.qty < 1 || !item?.qty) {
-        return next(new ErrorResponse("Invalid product Quantity!", 400, "validationError"));
+        return next(
+          new ErrorResponse(
+            "Invalid product Quantity!",
+            400,
+            "validationError",
+          ),
+        );
       }
 
-      if (!item?.deliveryFee) {
-        return next(new ErrorResponse(`Delivery fee for product with ID:${item?.product} is required!`, 400, "validationError"));
+      if (item?.deliveryFee === undefined || item?.deliveryFee === null) {
+        return next(
+          new ErrorResponse(
+            `Delivery fee for product with ID:${item?.product} is required!`,
+            400,
+            "validationError",
+          ),
+        );
       }
 
       if (!mongoose.Types.ObjectId.isValid(item?.product)) {
-        return next(new ErrorResponse("Invalid product ID!", 400, "validationError"));
+        return next(
+          new ErrorResponse("Invalid product ID!", 400, "validationError"),
+        );
       }
 
       const productExists = await ProductModel.findOne({
@@ -593,7 +632,13 @@ exports.initializeOrder = async (req, res, next) => {
 
       if (productExists) {
         if (productExists.quantityInStock < item.qty) {
-          return next(new ErrorResponse(`Quantity requested(${item.qty}), is above the quantity in stock(${productExists.quantityInStock}), for the product: ${productExists.name}!`, 404, "validationError"));
+          return next(
+            new ErrorResponse(
+              `Quantity requested(${item.qty}), is above the quantity in stock(${productExists.quantityInStock}), for the product: ${productExists.name}!`,
+              404,
+              "validationError",
+            ),
+          );
         }
         resolvedProducts.push({
           product: item.product,
@@ -607,17 +652,35 @@ exports.initializeOrder = async (req, res, next) => {
         }).populate("constituents.product");
 
         if (!packageExists) {
-          return next(new ErrorResponse(`Product or Package with ID: ${item.product} not found or deleted!`, 404, "validationError"));
+          return next(
+            new ErrorResponse(
+              `Product or Package with ID: ${item.product} not found or deleted!`,
+              404,
+              "validationError",
+            ),
+          );
         }
 
         // Check constituent stock
         for (const constituent of packageExists.constituents) {
           const qtyNeeded = constituent.qty * item.qty;
           if (!constituent.product || constituent.product.isDeleted) {
-            return next(new ErrorResponse(`Component product in package ${packageExists.name} is deleted or missing!`, 404, "validationError"));
+            return next(
+              new ErrorResponse(
+                `Component product in package ${packageExists.name} is deleted or missing!`,
+                404,
+                "validationError",
+              ),
+            );
           }
           if (constituent.product.quantityInStock < qtyNeeded) {
-            return next(new ErrorResponse(`Component product ${constituent.product.name} inside package ${packageExists.name} has insufficient stock (Required: ${qtyNeeded}, In stock: ${constituent.product.quantityInStock})`, 404, "validationError"));
+            return next(
+              new ErrorResponse(
+                `Component product ${constituent.product.name} inside package ${packageExists.name} has insufficient stock (Required: ${qtyNeeded}, In stock: ${constituent.product.quantityInStock})`,
+                404,
+                "validationError",
+              ),
+            );
           }
         }
 
@@ -644,7 +707,10 @@ exports.initializeOrder = async (req, res, next) => {
     req.body.totalPricePaid = calculatedTotal;
 
     try {
-      await addOrderSchema.validate({ ...req.body, paymentReference: "temp-ref" }, { abortEarly: true });
+      await addOrderSchema.validate(
+        { ...req.body, paymentReference: "temp-ref" },
+        { abortEarly: true },
+      );
     } catch (e) {
       e.statusCode = 400;
       return next(e);
@@ -657,9 +723,16 @@ exports.initializeOrder = async (req, res, next) => {
       callback_url: `${config.HOMEPAGE}/checkout/success`,
     };
 
-    const initializeResponse = await PayStackAPI.initializeTransaction(paystackPayload);
+    const initializeResponse =
+      await PayStackAPI.initializeTransaction(paystackPayload);
     if (!initializeResponse || !initializeResponse.status) {
-      return next(new ErrorResponse("Failed to initialize Paystack transaction.", 400, "validationError"));
+      return next(
+        new ErrorResponse(
+          "Failed to initialize Paystack transaction.",
+          400,
+          "validationError",
+        ),
+      );
     }
 
     // Create order with pending status
@@ -697,10 +770,16 @@ const finalizeOrderPayment = async (paymentReference) => {
   const PayStackAPI = new PaystackAPI();
   const verifiedPayment = await PayStackAPI.verifyPayment(paymentReference);
 
-  if (!verifiedPayment || !verifiedPayment.status || verifiedPayment.data.status !== "success") {
+  if (
+    !verifiedPayment ||
+    !verifiedPayment.status ||
+    verifiedPayment.data.status !== "success"
+  ) {
     order.paymentStatus = "failed";
     await order.save();
-    throw new Error("Payment verification failed. The transaction was not successful.");
+    throw new Error(
+      "Payment verification failed. The transaction was not successful.",
+    );
   }
 
   // Verify amount matches order amount (amount is in kobo)
@@ -708,7 +787,9 @@ const finalizeOrderPayment = async (paymentReference) => {
   if (verifiedPayment.data.amount !== expectedKoboAmount) {
     order.paymentStatus = "failed";
     await order.save();
-    throw new Error("Payment verification failed. Paid amount does not match the order total.");
+    throw new Error(
+      "Payment verification failed. Paid amount does not match the order total.",
+    );
   }
 
   // If verified, finalize order:
@@ -728,10 +809,13 @@ const finalizeOrderPayment = async (paymentReference) => {
       }
 
       if (productExists.quantityInStock < item.qty) {
-        throw new Error(`Quantity requested for ${productExists.name} exceeds available stock.`);
+        throw new Error(
+          `Quantity requested for ${productExists.name} exceeds available stock.`,
+        );
       }
 
-      productExists.quantityInStock = productExists.quantityInStock - parseInt(item.qty);
+      productExists.quantityInStock =
+        productExists.quantityInStock - parseInt(item.qty);
       purchasedProducts.push(productExists);
 
       itemsArray.push({
@@ -753,10 +837,14 @@ const finalizeOrderPayment = async (paymentReference) => {
       for (const constituent of packageExists.constituents) {
         const qtyNeeded = constituent.qty * item.qty;
         if (!constituent.product || constituent.product.isDeleted) {
-          throw new Error(`Component product in package ${packageExists.name} is deleted or missing.`);
+          throw new Error(
+            `Component product in package ${packageExists.name} is deleted or missing.`,
+          );
         }
         if (constituent.product.quantityInStock < qtyNeeded) {
-          throw new Error(`Component product ${constituent.product.name} inside package ${packageExists.name} has insufficient stock.`);
+          throw new Error(
+            `Component product ${constituent.product.name} inside package ${packageExists.name} has insufficient stock.`,
+          );
         }
 
         constituent.product.quantityInStock -= qtyNeeded;
@@ -902,11 +990,19 @@ exports.verifyOrderPayment = async (req, res, next) => {
     const { paymentReference } = req.body;
     const user = req.user;
     if (!user) {
-      return next(new ErrorResponse("Please login to continue!", 401, "unauthorized"));
+      return next(
+        new ErrorResponse("Please login to continue!", 401, "unauthorized"),
+      );
     }
 
     if (!paymentReference) {
-      return next(new ErrorResponse("Payment reference is required", 400, "validationError"));
+      return next(
+        new ErrorResponse(
+          "Payment reference is required",
+          400,
+          "validationError",
+        ),
+      );
     }
 
     const order = await finalizeOrderPayment(paymentReference);
@@ -930,7 +1026,8 @@ exports.paystackWebhook = async (req, res, next) => {
       return res.status(400).json({ message: "No signature provided" });
     }
 
-    const paystackSecret = process.env.PAYSTACK_SECRET_KEY || config.PAYSTACK_SECRET_KEY;
+    const paystackSecret =
+      process.env.PAYSTACK_SECRET_KEY || config.PAYSTACK_SECRET_KEY;
     const hash = crypto
       .createHmac("sha512", paystackSecret)
       .update(JSON.stringify(req.body))
