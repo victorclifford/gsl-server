@@ -9,11 +9,47 @@ const mongoose = require("mongoose");
 const { cloudinary } = require("../utils/cloudinary");
 const ProductModel = require("../models/ProductModel");
 const TrackingIdModel = require("../models/TrackingId");
+const PackageModel = require("../models/PackageModel");
 const PaystackAPI = require("../utils/paystack");
 const { sendEmail } = require("../utils/sendEmail");
 const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
 const UserModel = require("../models/UserModel");
 const paginate = require("../utils/paginate");
+
+const calculateBackendOrderTotal = async (products) => {
+  let subtotal = 0;
+  let shippingFee = 0;
+
+  for (const item of products) {
+    if (!mongoose.Types.ObjectId.isValid(item.product)) {
+      throw new Error(`Invalid item ID: ${item.product}`);
+    }
+
+    const productExists = await ProductModel.findOne({
+      _id: item.product,
+      isDeleted: false,
+    });
+
+    let price = 0;
+    if (productExists) {
+      price = productExists.price;
+    } else {
+      const packageExists = await PackageModel.findOne({
+        _id: item.product,
+      });
+      if (!packageExists) {
+        throw new Error(`Item with ID: ${item.product} not found or deleted`);
+      }
+      price = packageExists.price;
+    }
+
+    subtotal += price * item.qty;
+    shippingFee += item.deliveryFee * item.qty;
+  }
+
+  const total = subtotal + shippingFee;
+  return Math.max(0, total);
+};
 
 exports.createOrder = async (req, res, next) => {
   try {
@@ -33,11 +69,11 @@ exports.createOrder = async (req, res, next) => {
     }
     console.log({ paymentReference });
     let itemsArray = [];
-
     let purchasedProducts = [];
+    let resolvedProducts = [];
 
-    for (const product of products) {
-      if (product?.qty < 1 || !product?.qty) {
+    for (const item of products) {
+      if (item?.qty < 1 || !item?.qty) {
         return next(
           new ErrorResponse(
             "Invalid product Quantity!",
@@ -47,60 +83,117 @@ exports.createOrder = async (req, res, next) => {
         );
       }
 
-      if (!product?.deliveryFee) {
+      if (item?.deliveryFee === undefined || item?.deliveryFee === null) {
         return next(
           new ErrorResponse(
-            `Deleivery fee for product with ID:${product?.product} is required !`,
+            `Deleivery fee for product with ID:${item?.product} is required !`,
             400,
             "validationError",
           ),
         );
       }
 
-      if (!mongoose.Types.ObjectId.isValid(product?.product)) {
+      if (!mongoose.Types.ObjectId.isValid(item?.product)) {
         return next(
           new ErrorResponse("Invalid product ID!", 400, "validationError"),
         );
       }
 
-      //check if products to be purchased still exists or is out of stock
       const productExists = await ProductModel.findOne({
-        _id: product.product,
+        _id: item.product,
         isDeleted: false,
       });
-      if (!productExists) {
-        return next(
-          new ErrorResponse(
-            `product with ID: ${product.product}, may have been deleted already!`,
-            404,
-            "validationError",
-          ),
-        );
+
+      if (productExists) {
+        if (productExists.quantityInStock < item.qty) {
+          return next(
+            new ErrorResponse(
+              `Quantity requested(${item.qty}), is above the quantity in stock(${productExists.quantityInStock}), for the product: ${productExists.name}!`,
+              404,
+              "validationError",
+            ),
+          );
+        }
+
+        // Subtract quantity from stock
+        productExists.quantityInStock =
+          productExists.quantityInStock - parseInt(item.qty);
+        purchasedProducts.push(productExists);
+
+        itemsArray.push({
+          itemName: productExists.name,
+          itemQty: item.qty,
+          itemPrice: productExists.price,
+          discountPercentageOff: "0% OFF",
+          delivery: item.deliveryFee,
+        });
+
+        resolvedProducts.push({
+          product: item.product,
+          qty: item.qty,
+          deliveryFee: item.deliveryFee,
+          itemModel: "Product",
+        });
+      } else {
+        const packageExists = await PackageModel.findOne({
+          _id: item.product,
+        }).populate("constituents.product");
+
+        if (!packageExists) {
+          return next(
+            new ErrorResponse(
+              `Product or Package with ID: ${item.product} not found or deleted!`,
+              404,
+              "validationError",
+            ),
+          );
+        }
+
+        // Check constituent stock
+        for (const constituent of packageExists.constituents) {
+          const qtyNeeded = constituent.qty * item.qty;
+          if (!constituent.product || constituent.product.isDeleted) {
+            return next(
+              new ErrorResponse(
+                `Component product in package ${packageExists.name} is deleted or missing!`,
+                404,
+                "validationError",
+              ),
+            );
+          }
+          if (constituent.product.quantityInStock < qtyNeeded) {
+            return next(
+              new ErrorResponse(
+                `Component product ${constituent.product.name} inside package ${packageExists.name} has insufficient stock (Required: ${qtyNeeded}, In stock: ${constituent.product.quantityInStock})`,
+                404,
+                "validationError",
+              ),
+            );
+          }
+
+          // Subtract quantity from stock
+          constituent.product.quantityInStock -= qtyNeeded;
+          purchasedProducts.push(constituent.product);
+        }
+
+        itemsArray.push({
+          itemName: packageExists.name,
+          itemQty: item.qty,
+          itemPrice: packageExists.price,
+          discountPercentageOff: "0% OFF",
+          delivery: item.deliveryFee,
+        });
+
+        resolvedProducts.push({
+          product: item.product,
+          qty: item.qty,
+          deliveryFee: item.deliveryFee,
+          itemModel: "Package",
+        });
       }
-
-      if (productExists.quantityInStock < product.qty) {
-        return next(
-          new ErrorResponse(
-            `Quantity requested(${product.qty}), is above the quantity in stock(${productExists.quantityInStock}), for the product: ${productExists.name}!`,
-            404,
-            "validationError",
-          ),
-        );
-      }
-
-      //subract qty from qty in stock
-      productExists.quantityInStock =
-        productExists.quantityInStock - parseInt(product.qty);
-      purchasedProducts.push(productExists);
-
-      itemsArray.push({
-        itemName: productExists.name,
-        itemQty: product.qty,
-        itemPrice: productExists.price,
-        discountPercentageOff: "0% OFF",
-        delivery: product.deliveryFee,
-      });
     }
+
+    req.body.products = resolvedProducts;
 
     try {
       await addOrderSchema.validate(req.body, { abortEarly: true });
@@ -301,9 +394,13 @@ exports.updateOrderTrackingLevel = async (req, res, next) => {
     if (mongoose.Types.ObjectId.isValid(trackingId)) {
       orderToBeUpdated = await OrderModel.findOne({ trackingId });
     } else {
-      const trackingDoc = await TrackingIdModel.findOne({ tracking_id: trackingId });
+      const trackingDoc = await TrackingIdModel.findOne({
+        tracking_id: trackingId,
+      });
       if (trackingDoc) {
-        orderToBeUpdated = await OrderModel.findOne({ trackingId: trackingDoc._id });
+        orderToBeUpdated = await OrderModel.findOne({
+          trackingId: trackingDoc._id,
+        });
       }
     }
 
@@ -396,6 +493,11 @@ exports.getAllOrders = async (req, res, next) => {
       populate: ["user", "trackingId", "products.product"],
     });
 
+    await OrderModel.populate(orders, {
+      path: "products.product.constituents.product",
+      model: "Product",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Orders fetch successful",
@@ -416,6 +518,12 @@ exports.getUserOrders = async (req, res, next) => {
         createdAt: -1,
       })
       .exec();
+
+    await OrderModel.populate(orders, {
+      path: "products.product.constituents.product",
+      model: "Product",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Orders fetch successful",
@@ -434,7 +542,9 @@ exports.getOrder = async (req, res, next) => {
     if (mongoose.Types.ObjectId.isValid(orderid)) {
       query._id = orderid;
     } else {
-      const trackingDoc = await TrackingIdModel.findOne({ tracking_id: orderid });
+      const trackingDoc = await TrackingIdModel.findOne({
+        tracking_id: orderid,
+      });
       if (trackingDoc) {
         query.trackingId = trackingDoc._id;
       } else {
@@ -450,6 +560,11 @@ exports.getOrder = async (req, res, next) => {
       return next(new ErrorResponse("Order not found!", 404, "notFound"));
     }
 
+    await OrderModel.populate(order, {
+      path: "products.product.constituents.product",
+      model: "Product",
+    });
+
     return res.status(200).json({
       success: true,
       message: "Order fetch successful",
@@ -457,5 +572,480 @@ exports.getOrder = async (req, res, next) => {
     });
   } catch (error) {
     return next(error);
+  }
+};
+
+exports.initializeOrder = async (req, res, next) => {
+  try {
+    const { products, paymentMethod, deliveryDetails } = req.body;
+
+    const user = req.user;
+    if (!user) {
+      return next(
+        new ErrorResponse("Please login to continue!", 401, "unauthorized"),
+      );
+    }
+
+    if (paymentMethod.toLowerCase() !== "paystack") {
+      return next(
+        new ErrorResponse(
+          "Only Paystack payment method is supported on this endpoint",
+          400,
+          "validationError",
+        ),
+      );
+    }
+
+    let resolvedProducts = [];
+
+    for (const item of products) {
+      if (item?.qty < 1 || !item?.qty) {
+        return next(
+          new ErrorResponse(
+            "Invalid product Quantity!",
+            400,
+            "validationError",
+          ),
+        );
+      }
+
+      if (item?.deliveryFee === undefined || item?.deliveryFee === null) {
+        return next(
+          new ErrorResponse(
+            `Delivery fee for product with ID:${item?.product} is required!`,
+            400,
+            "validationError",
+          ),
+        );
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(item?.product)) {
+        return next(
+          new ErrorResponse("Invalid product ID!", 400, "validationError"),
+        );
+      }
+
+      const productExists = await ProductModel.findOne({
+        _id: item.product,
+        isDeleted: false,
+      });
+
+      if (productExists) {
+        if (productExists.quantityInStock < item.qty) {
+          return next(
+            new ErrorResponse(
+              `Quantity requested(${item.qty}), is above the quantity in stock(${productExists.quantityInStock}), for the product: ${productExists.name}!`,
+              404,
+              "validationError",
+            ),
+          );
+        }
+        resolvedProducts.push({
+          product: item.product,
+          qty: item.qty,
+          deliveryFee: item.deliveryFee,
+          itemModel: "Product",
+        });
+      } else {
+        const packageExists = await PackageModel.findOne({
+          _id: item.product,
+        }).populate("constituents.product");
+
+        if (!packageExists) {
+          return next(
+            new ErrorResponse(
+              `Product or Package with ID: ${item.product} not found or deleted!`,
+              404,
+              "validationError",
+            ),
+          );
+        }
+
+        // Check constituent stock
+        for (const constituent of packageExists.constituents) {
+          const qtyNeeded = constituent.qty * item.qty;
+          if (!constituent.product || constituent.product.isDeleted) {
+            return next(
+              new ErrorResponse(
+                `Component product in package ${packageExists.name} is deleted or missing!`,
+                404,
+                "validationError",
+              ),
+            );
+          }
+          if (constituent.product.quantityInStock < qtyNeeded) {
+            return next(
+              new ErrorResponse(
+                `Component product ${constituent.product.name} inside package ${packageExists.name} has insufficient stock (Required: ${qtyNeeded}, In stock: ${constituent.product.quantityInStock})`,
+                404,
+                "validationError",
+              ),
+            );
+          }
+        }
+
+        resolvedProducts.push({
+          product: item.product,
+          qty: item.qty,
+          deliveryFee: item.deliveryFee,
+          itemModel: "Package",
+        });
+      }
+    }
+
+    req.body.products = resolvedProducts;
+
+    // Backend price recalculation (Secure)
+    let calculatedTotal;
+    try {
+      calculatedTotal = await calculateBackendOrderTotal(products);
+    } catch (e) {
+      return next(new ErrorResponse(e.message, 404, "validationError"));
+    }
+
+    // Force verified server-side total
+    req.body.totalPricePaid = calculatedTotal;
+
+    try {
+      await addOrderSchema.validate(
+        { ...req.body, paymentReference: "temp-ref" },
+        { abortEarly: true },
+      );
+    } catch (e) {
+      e.statusCode = 400;
+      return next(e);
+    }
+
+    const PayStackAPI = new PaystackAPI();
+    const paystackPayload = {
+      email: user.email,
+      amount: Math.round(calculatedTotal * 100), // in kobo
+      callback_url: `${config.HOMEPAGE}/checkout/success`,
+    };
+
+    const initializeResponse =
+      await PayStackAPI.initializeTransaction(paystackPayload);
+    if (!initializeResponse || !initializeResponse.status) {
+      return next(
+        new ErrorResponse(
+          "Failed to initialize Paystack transaction.",
+          400,
+          "validationError",
+        ),
+      );
+    }
+
+    // Create order with pending status
+    const newOrder = await OrderModel.create({
+      ...req.body,
+      user: user?._id,
+      paymentReference: initializeResponse.data.reference,
+      paymentStatus: "pending",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment initialized successfully",
+      authorization_url: initializeResponse.data.authorization_url,
+      reference: initializeResponse.data.reference,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const finalizeOrderPayment = async (paymentReference) => {
+  // Find the order
+  const order = await OrderModel.findOne({ paymentReference }).populate("user");
+  if (!order) {
+    throw new Error("Order not found!");
+  }
+
+  // If already marked as paid, return success (idempotent)
+  if (order.paymentStatus === "paid") {
+    return order;
+  }
+
+  // Call Paystack API to verify
+  const PayStackAPI = new PaystackAPI();
+  const verifiedPayment = await PayStackAPI.verifyPayment(paymentReference);
+
+  if (
+    !verifiedPayment ||
+    !verifiedPayment.status ||
+    verifiedPayment.data.status !== "success"
+  ) {
+    order.paymentStatus = "failed";
+    await order.save();
+    throw new Error(
+      "Payment verification failed. The transaction was not successful.",
+    );
+  }
+
+  // Verify amount matches order amount (amount is in kobo)
+  const expectedKoboAmount = Math.round(order.totalPricePaid * 100);
+  if (verifiedPayment.data.amount !== expectedKoboAmount) {
+    order.paymentStatus = "failed";
+    await order.save();
+    throw new Error(
+      "Payment verification failed. Paid amount does not match the order total.",
+    );
+  }
+
+  // If verified, finalize order:
+  // 1. Decrement stock
+  let purchasedProducts = [];
+  let itemsArray = [];
+
+  for (const item of order.products) {
+    if (item.itemModel === "Product") {
+      const productExists = await ProductModel.findOne({
+        _id: item.product,
+        isDeleted: false,
+      });
+
+      if (!productExists) {
+        throw new Error(`Product with ID: ${item.product} no longer exists.`);
+      }
+
+      if (productExists.quantityInStock < item.qty) {
+        throw new Error(
+          `Quantity requested for ${productExists.name} exceeds available stock.`,
+        );
+      }
+
+      productExists.quantityInStock =
+        productExists.quantityInStock - parseInt(item.qty);
+      purchasedProducts.push(productExists);
+
+      itemsArray.push({
+        itemName: productExists.name,
+        itemQty: item.qty,
+        itemPrice: productExists.price,
+        discountPercentageOff: "0% OFF",
+        delivery: item.deliveryFee,
+      });
+    } else {
+      const packageExists = await PackageModel.findOne({
+        _id: item.product,
+      }).populate("constituents.product");
+
+      if (!packageExists) {
+        throw new Error(`Package with ID: ${item.product} no longer exists.`);
+      }
+
+      for (const constituent of packageExists.constituents) {
+        const qtyNeeded = constituent.qty * item.qty;
+        if (!constituent.product || constituent.product.isDeleted) {
+          throw new Error(
+            `Component product in package ${packageExists.name} is deleted or missing.`,
+          );
+        }
+        if (constituent.product.quantityInStock < qtyNeeded) {
+          throw new Error(
+            `Component product ${constituent.product.name} inside package ${packageExists.name} has insufficient stock.`,
+          );
+        }
+
+        constituent.product.quantityInStock -= qtyNeeded;
+        purchasedProducts.push(constituent.product);
+      }
+
+      itemsArray.push({
+        itemName: packageExists.name,
+        itemQty: item.qty,
+        itemPrice: packageExists.price,
+        discountPercentageOff: "0% OFF",
+        delivery: item.deliveryFee,
+      });
+    }
+  }
+
+  // Save subtracted quantity of purchased products
+  for (const product of purchasedProducts) {
+    await product.save();
+  }
+
+  // Update order status
+  order.paymentStatus = "paid";
+  order.trackingStatus = "Processing";
+
+  // 2. Generate and save tracking ID
+  const trackingIdGenerator = new idGenerator();
+  const trackingID = await trackingIdGenerator.generateTrackingID(
+    TrackingIdModel,
+    order._id,
+  );
+
+  const trackingIdDoc = await TrackingIdModel.findOne({
+    tracking_id: trackingID,
+  });
+  order.trackingId = trackingIdDoc._id;
+  await order.save();
+
+  // 3. Send confirmation emails
+  const { suiteNumber, streetAddress, city, zipCode } = order.deliveryDetails;
+  const cityAndZip = `${city} ${zipCode}`;
+  let totDeliveryFee = 0;
+  let totCost = 0;
+  let subTotalPrice = 0;
+  itemsArray.forEach((itm) => {
+    totDeliveryFee = totDeliveryFee + itm.delivery;
+    totCost = totCost + itm.itemPrice * itm.itemQty;
+  });
+
+  subTotalPrice = totCost;
+  const totCostWithDelivery = totCost + totDeliveryFee;
+
+  const estimatedDaysForDelivery = 7;
+  const estimatedDateOfDelivery = addDaysToCurrentDate(
+    estimatedDaysForDelivery,
+  );
+  const formattedDeliveryDateEstimate = dateStringToReadableDate(
+    estimatedDateOfDelivery,
+  );
+
+  let orderConfirmedEmailData = {
+    from: config.EMAIL_FROM,
+    to: order.user.email,
+    name: order.user.firstname,
+    subject: "Order Confirmed",
+    template: "order-confirmed",
+    trackingId: trackingID,
+    items: itemsArray,
+    deliveryFee: totDeliveryFee.toLocaleString("en-US", {
+      style: "currency",
+      currency: "NGN",
+    }),
+    totalCost: totCostWithDelivery.toLocaleString("en-US", {
+      style: "currency",
+      currency: "NGN",
+    }),
+    subTotalPrice: subTotalPrice.toLocaleString("en-US", {
+      style: "currency",
+      currency: "NGN",
+    }),
+    suiteNumber,
+    streetAddress,
+    cityAndZip,
+    estimatedDeliveryDate: formattedDeliveryDateEstimate,
+  };
+
+  sendBrevoEmail({
+    to: [{ email: order.user.email, name: order.user.firstname }],
+    templateName: "order-confirmed",
+    parameters: {
+      SupportAgentName: "Jessy",
+    },
+    ...orderConfirmedEmailData,
+  });
+
+  // Admins email copy
+  const admins = await UserModel.find({
+    $or: [{ isAdmin: true }, { isSuperAdmin: true }],
+  });
+
+  for (const admin of admins) {
+    let adminEmailData = {
+      from: config.EMAIL_FROM,
+      to: admin.email,
+      name: admin.firstname,
+      subject: "Order Received",
+      template: "order-received",
+      trackingId: trackingID,
+      items: itemsArray,
+      deliveryFee: totDeliveryFee.toLocaleString("en-US", {
+        style: "currency",
+        currency: "NGN",
+      }),
+      totalCost: totCostWithDelivery.toLocaleString("en-US", {
+        style: "currency",
+        currency: "NGN",
+      }),
+      subTotalPrice: subTotalPrice.toLocaleString("en-US", {
+        style: "currency",
+        currency: "NGN",
+      }),
+      suiteNumber,
+      streetAddress,
+      cityAndZip,
+      estimatedDeliveryDate: formattedDeliveryDateEstimate,
+    };
+
+    sendBrevoEmail({
+      to: [{ email: admin.email, name: admin.firstname }],
+      templateName: "order-received",
+      parameters: {
+        SupportAgentName: "Jessy",
+      },
+      ...adminEmailData,
+    });
+  }
+
+  return order;
+};
+
+exports.verifyOrderPayment = async (req, res, next) => {
+  try {
+    const { paymentReference } = req.body;
+    const user = req.user;
+    if (!user) {
+      return next(
+        new ErrorResponse("Please login to continue!", 401, "unauthorized"),
+      );
+    }
+
+    if (!paymentReference) {
+      return next(
+        new ErrorResponse(
+          "Payment reference is required",
+          400,
+          "validationError",
+        ),
+      );
+    }
+
+    const order = await finalizeOrderPayment(paymentReference);
+
+    return res.status(200).json({
+      success: true,
+      message: "Order placed and payment verified successfully",
+      order,
+    });
+  } catch (error) {
+    return next(new ErrorResponse(error.message, 400, "validationError"));
+  }
+};
+
+const crypto = require("crypto");
+
+exports.paystackWebhook = async (req, res, next) => {
+  try {
+    const signature = req.headers["x-paystack-signature"];
+    if (!signature) {
+      return res.status(400).json({ message: "No signature provided" });
+    }
+
+    const paystackSecret =
+      process.env.PAYSTACK_SECRET_KEY || config.PAYSTACK_SECRET_KEY;
+    const hash = crypto
+      .createHmac("sha512", paystackSecret)
+      .update(JSON.stringify(req.body))
+      .digest("hex");
+
+    if (hash !== signature) {
+      return res.status(401).json({ message: "Invalid signature" });
+    }
+
+    const event = req.body;
+    if (event.event === "charge.success") {
+      const reference = event.data.reference;
+      await finalizeOrderPayment(reference);
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Webhook Error:", error);
+    return res.status(200).json({ success: false, error: error.message });
   }
 };

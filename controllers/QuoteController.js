@@ -1,5 +1,7 @@
 const QuoteModel = require("../models/QuoteModel");
+const UserModel = require("../models/UserModel");
 const ErrorResponse = require("../utils/errorResponse");
+const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
 
 // @desc    Submit energy calculator lead or quote request
 // @route   POST /api/quotes
@@ -7,6 +9,37 @@ const ErrorResponse = require("../utils/errorResponse");
 exports.createQuote = async (req, res, next) => {
   try {
     const quote = await QuoteModel.create(req.body);
+
+    // Find database admin users to notify
+    const admins = await UserModel.find({ isAdmin: true }).select("email name");
+    const recipients = admins.length > 0
+      ? admins.map(admin => ({ email: admin.email, name: admin.name || "Go Solar Admin" }))
+      : [{ email: process.env.ADMIN_EMAIL || process.env.EMAIL_FROM || "info@gosolar.ng", name: "Go Solar Admin" }];
+
+    const dashboardUrl = `${process.env.HOMEPAGE || "http://localhost:3000"}/dashboard/quotes`;
+
+    sendBrevoEmail({
+      subject: `New Solar Lead: ${quote.fullName}`,
+      to: recipients,
+      templateName: "quote-notification",
+      parameters: {
+        fullName: quote.fullName,
+        phoneNumber: quote.phoneNumber,
+        email: quote.email,
+        address: quote.address || "N/A",
+        city: quote.city || "N/A",
+        state: quote.state || "N/A",
+        dailyKwh: quote.dailyKwh,
+        peakWatts: quote.peakWatts,
+        recommendedInverter: quote.recommendedInverter,
+        recommendedBattery: quote.recommendedBattery,
+        recommendedPv: quote.recommendedPv,
+        notes: quote.notes,
+        dashboardUrl: dashboardUrl,
+      },
+    }).catch((err) => {
+      console.error("Failed to dispatch admin email notification:", err);
+    });
 
     return res.status(201).json({
       success: true,

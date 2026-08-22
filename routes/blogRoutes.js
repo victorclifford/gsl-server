@@ -7,11 +7,22 @@ const router = express.Router();
 
 // Public routes
 router.get("/", BlogController.getBlogs);
+router.get("/published", BlogController.getPublishedBlogs);
 router.get("/:blogid", BlogController.getBlog);
 
 // Admin routes — RESTful CRUD matching frontend mutations
-router.post("/", authorizeAdmin, upload.single("image"), BlogController.createBlog);
-router.put("/:blogid", authorizeAdmin, upload.single("image"), BlogController.updateBlog);
+router.post(
+  "/",
+  authorizeAdmin,
+  upload.single("image"),
+  BlogController.createBlog,
+);
+router.put(
+  "/:blogid",
+  authorizeAdmin,
+  upload.single("image"),
+  BlogController.updateBlog,
+);
 router.delete("/:blogid", authorizeAdmin, BlogController.deleteBlog);
 
 module.exports = router;

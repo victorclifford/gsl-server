@@ -28,7 +28,7 @@ const {
 //create blog
 exports.createBlog = async (req, res, next) => {
   try {
-    const { title, tags, content, author, excerpt } = req.body;
+    const { title, tags, content, author, excerpt, isPublished } = req.body;
 
     // console.log({ tags });
 
@@ -115,6 +115,20 @@ exports.createBlog = async (req, res, next) => {
       ],
     });
 
+    let image = "";
+    let imageId = "";
+
+    if (req.file) {
+      const uploadResult = await uploadImage(req.file, {
+        folder: "goSolar/blog-images",
+      });
+
+      if (uploadResult?.public_id && uploadResult?.url) {
+        image = uploadResult.url;
+        imageId = uploadResult.public_id;
+      }
+    }
+
     const blogData = {
       slug: `${slugify(title)}-${generateRandomCode(4)}`,
       content: sanitizedBlogContent,
@@ -123,26 +137,14 @@ exports.createBlog = async (req, res, next) => {
       author,
       excerpt: excerpt || calculateExcerpt(content),
       readTime: calculateReadTime(content),
+      isPublished: isPublished === "true" || isPublished === true,
+      image,
+      imageId,
+      createdBy: req.user ? req.user._id : null,
     };
 
-    //create category with Category model
     const newBlog = await BlogModel.create({ ...blogData });
     if (newBlog) {
-      if (req.file) {
-        const uploadResult = await uploadImage(req.file, {
-          folder: "goSolar/blog-images",
-        });
-
-        if (uploadResult?.public_id && uploadResult?.url) {
-          newBlog.image = uploadResult.url;
-          newBlog.imageId = uploadResult.public_id;
-          await newBlog.save();
-        }
-      }
-
-      // const allBlogs = await BlogModel.find({}).sort({ createdAt: -1 }).exec();
-
-      //return response
       return res.status(201).json({
         success: true,
         message: "Blog created successfully",
@@ -158,7 +160,11 @@ exports.createBlog = async (req, res, next) => {
 exports.updateBlog = async (req, res, next) => {
   try {
     const blogId = req.params.blogid || req.body.blogId || req.body.id;
-    let { title, tags, content, author, excerpt } = req.body;
+    let { title, tags, content, author, excerpt, isPublished } = req.body;
+
+    if (isPublished !== undefined) {
+      req.body.isPublished = isPublished === "true" || isPublished === true;
+    }
 
     // console.log({ tags });
 
@@ -293,6 +299,25 @@ exports.updateBlog = async (req, res, next) => {
       );
     }
 
+    //handle file saving before Mongo update for atomic state
+    if (req.file) {
+      console.log("There is an img to be updated...");
+      const options = {
+        folder: "goSolar/blog-images",
+      };
+      if (blogToBeUpdated.imageId) {
+        options.public_id = blogToBeUpdated.imageId;
+        options.overwrite = true;
+        options.invalidate = true;
+      }
+      const imgUpdate = await uploadImage(req.file, options);
+
+      if (imgUpdate?.public_id && imgUpdate?.url) {
+        req.body.image = imgUpdate.url;
+        req.body.imageId = imgUpdate.public_id;
+      }
+    }
+
     //filter empty fields from req.body, so no field is updated without data
     const cleanUpdateData = (updateData) => {
       const cleanedData = Object.keys(updateData).reduce((acc, key) => {
@@ -323,28 +348,6 @@ exports.updateBlog = async (req, res, next) => {
       { new: true }
     );
 
-    //handle file saveing
-    if (req.file) {
-      console.log("There is an img to be updated...");
-      const options = {
-        folder: "goSolar/blog-images",
-      };
-      if (updatedBlog.imageId) {
-        options.public_id = updatedBlog.imageId;
-        options.overwrite = true;
-        options.invalidate = true;
-      }
-      const imgUpdate = await uploadImage(req.file, options);
-
-      if (imgUpdate?.public_id && imgUpdate?.url) {
-        updatedBlog.image = imgUpdate.url;
-        updatedBlog.imageId = imgUpdate.public_id;
-        await updatedBlog.save();
-      }
-    }
-
-    // const allBlogs = await BlogModel.find({}).sort({ createdAt: -1 }).exec();
-
     //return response
     return res.status(200).json({
       success: true,
@@ -358,13 +361,68 @@ exports.updateBlog = async (req, res, next) => {
 
 exports.getBlogs = async (req, res, next) => {
   try {
-    const blogs = await BlogModel.find({ isDeleted: false })
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = { isDeleted: false };
+
+    // Search query support
+    if (req.query.q) {
+      query.$or = [
+        { title: { $regex: req.query.q, $options: "i" } },
+        { content: { $regex: req.query.q, $options: "i" } },
+      ];
+    }
+
+    // Filter by publish status if passed
+    if (req.query.isPublished !== undefined) {
+      query.isPublished = req.query.isPublished === "true" || req.query.isPublished === true;
+    }
+
+    const totalBlogs = await BlogModel.countDocuments(query);
+    const blogs = await BlogModel.find(query)
       .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("createdBy", "name email")
       .exec();
+
+    const totalPages = Math.ceil(totalBlogs / limit);
 
     return res.status(200).json({
       success: true,
       message: "Blogs fetch successfull",
+      blogs,
+      totalPages,
+      currentPage: page,
+      totalBlogs,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.getPublishedBlogs = async (req, res, next) => {
+  try {
+    const query = { isDeleted: false, isPublished: true };
+
+    // Search query support
+    if (req.query.q) {
+      query.$or = [
+        { title: { $regex: req.query.q, $options: "i" } },
+        { content: { $regex: req.query.q, $options: "i" } },
+      ];
+    }
+
+    const blogs = await BlogModel.find(query)
+      .sort({ createdAt: -1 })
+      .populate("createdBy", "name email")
+      .exec();
+
+    return res.status(200).json({
+      success: true,
+      message: "Published blogs fetch successfull",
       blogs,
     });
   } catch (error) {
@@ -382,7 +440,8 @@ exports.getBlog = async (req, res, next) => {
       );
     }
 
-    const blog = await BlogModel.findOne({ _id: blogid, isDeleted: false });
+    const blog = await BlogModel.findOne({ _id: blogid, isDeleted: false })
+      .populate("createdBy", "name email");
 
     if (!blog) {
       return res.status(404).json({
@@ -422,6 +481,15 @@ exports.deleteBlog = async (req, res, next) => {
 
     blog.isDeleted = true;
     await blog.save();
+
+    // delete image from Cloudinary to free storage space
+    if (blog.imageId) {
+      try {
+        await cloudinary.uploader.destroy(blog.imageId);
+      } catch (err) {
+        console.error("Failed to delete blog image from Cloudinary:", err);
+      }
+    }
 
     return res.status(200).json({
       success: true,
