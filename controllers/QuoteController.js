@@ -1,4 +1,5 @@
 const QuoteModel = require("../models/QuoteModel");
+const UserModel = require("../models/UserModel");
 const ErrorResponse = require("../utils/errorResponse");
 const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
 
@@ -9,13 +10,17 @@ exports.createQuote = async (req, res, next) => {
   try {
     const quote = await QuoteModel.create(req.body);
 
-    // Dispatch email notification to admin asynchronously
-    const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_FROM || "info@gosolar.ng";
+    // Find database admin users to notify
+    const admins = await UserModel.find({ isAdmin: true }).select("email name");
+    const recipients = admins.length > 0
+      ? admins.map(admin => ({ email: admin.email, name: admin.name || "Go Solar Admin" }))
+      : [{ email: process.env.ADMIN_EMAIL || process.env.EMAIL_FROM || "info@gosolar.ng", name: "Go Solar Admin" }];
+
     const dashboardUrl = `${process.env.HOMEPAGE || "http://localhost:3000"}/dashboard/quotes`;
 
     sendBrevoEmail({
       subject: `New Solar Lead: ${quote.fullName}`,
-      to: [{ email: adminEmail, name: "Go Solar Admin" }],
+      to: recipients,
       templateName: "quote-notification",
       parameters: {
         fullName: quote.fullName,
