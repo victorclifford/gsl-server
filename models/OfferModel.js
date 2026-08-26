@@ -2,9 +2,9 @@ const mongoose = require("mongoose");
 
 const offerSchema = new mongoose.Schema(
   {
-    title: {
+    name: {
       type: String,
-      required: [true, "Offer title is required"],
+      required: [true, "Offer name is required"],
       trim: true,
     },
     description: {
@@ -16,10 +16,6 @@ const offerSchema = new mongoose.Schema(
       required: [true, "Discount percentage is required"],
       min: 1,
       max: 100,
-    },
-    bannerImage: {
-      type: String,
-      default: "",
     },
     products: [
       {

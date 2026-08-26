@@ -9,6 +9,7 @@ const { firstLetterInStringToUppercase } = require("../utils/helpers");
 const { cloudinary, uploadImage } = require("../utils/cloudinary");
 const CategoryModel = require("../models/CategoryModel");
 const paginate = require("../utils/paginate");
+const { syncOfferProducts } = require("../utils/offerSyncHelper");
 
 //get all products (admin / all)
 exports.getAllProducts = async (req, res, next) => {
@@ -58,10 +59,14 @@ exports.getAllProducts = async (req, res, next) => {
 //get published products (customer storefront)
 exports.getPublishedProducts = async (req, res, next) => {
   try {
-    const { page, limit, q, category, sort, minPrice, maxPrice, brands } =
+    const { page, limit, q, category, sort, minPrice, maxPrice, brands, offer } =
       req.query;
 
     const query = { isDeleted: false, isPublished: true };
+
+    if (offer && mongoose.Types.ObjectId.isValid(offer)) {
+      query.currentOffer = new mongoose.Types.ObjectId(offer);
+    }
 
     if (q) {
       query.$or = [
@@ -304,6 +309,7 @@ exports.addProducts = async (req, res, next) => {
       quantityInStock: Number(quantityInStock) || 0,
       price: Number(price),
       discountPrice: Number(discountPrice) || 0,
+      manualDiscountPrice: Number(discountPrice) || 0,
       shippingClass: shippingClass || "standard",
       brand,
       images: images_uploads,
@@ -447,6 +453,10 @@ exports.updateProduct = async (req, res, next) => {
           ),
         );
       }
+    }
+    if (discountPrice !== undefined) {
+      req.body.discountPrice = Number(discountPrice) || 0;
+      req.body.manualDiscountPrice = Number(discountPrice) || 0;
     }
 
     //filter empty fields from req.body, so no field is updated without data
@@ -656,23 +666,22 @@ exports.updateProductsOffer = async (req, res, next) => {
       }
     }
 
-    // Prepare bulk write operations
-    const bulkOps = products.map((productId) => ({
-      updateOne: {
-        filter: { _id: new mongoose.Types.ObjectId(productId) },
-        update: { $set: { currentOffer: offer } },
-      },
-    }));
-
-    // Perform bulk write
-    const bulkWriteResult = await Product.bulkWrite(bulkOps);
-
-    // Check if any products were updated
-    if (bulkWriteResult.nModified === 0) {
+    const offerDoc = await OfferModel.findById(offer);
+    if (!offerDoc) {
       return next(
-        new ErrorResponse("No products were updated", 404, "validationError"),
+        new ErrorResponse("Sales offer not found", 404, "validationError"),
       );
     }
+
+    // Merge product IDs into the offer's list avoiding duplicates
+    const existingProductIds = offerDoc.products.map(p => p.toString());
+    const newProductIds = products.filter(id => !existingProductIds.includes(id));
+    if (newProductIds.length > 0) {
+      offerDoc.products.push(...newProductIds);
+      await offerDoc.save();
+    }
+
+    await syncOfferProducts(offer);
 
     // Retrieve the updated products
     const updatedProducts = await Product.find({
@@ -709,7 +718,15 @@ exports.deleteProduct = async (req, res, next) => {
     }
 
     product.isDeleted = true;
+    product.currentOffer = null;
+    product.discountPrice = product.manualDiscountPrice || 0;
     await product.save();
+
+    // Remove this product from any sales offers lists
+    await OfferModel.updateMany(
+      { products: productid },
+      { $pull: { products: productid } }
+    );
 
     return res.status(200).json({
       success: true,

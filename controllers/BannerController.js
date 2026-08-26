@@ -47,14 +47,15 @@ exports.getAllBannersAdmin = async (req, res, next) => {
 // @access  Private/SuperAdmin
 exports.createBanner = async (req, res, next) => {
   try {
-    const { title, subtitle, badge, ctaText, ctaLink, order, isActive, image, placement } =
+    const { title, ctaLink, order, isActive, image, placement } =
       req.body;
 
     if (!title) {
-      return next(new ErrorResponse("Banner title is required", 400));
+      return next(new ErrorResponse("Banner title/label is required", 400));
     }
 
     let bannerImageUrl = image || "";
+    let bannerImageId = "";
 
     // If a file was uploaded through multipart/form-data
     if (req.file) {
@@ -62,6 +63,7 @@ exports.createBanner = async (req, res, next) => {
         folder: "goSolar/banners",
       });
       bannerImageUrl = uploadResult.url;
+      bannerImageId = uploadResult.public_id;
     }
 
     if (!bannerImageUrl) {
@@ -72,11 +74,9 @@ exports.createBanner = async (req, res, next) => {
 
     const banner = await BannerModel.create({
       title,
-      subtitle: subtitle || "",
-      badge: badge || "Special Highlight",
       image: bannerImageUrl,
-      ctaText: ctaText || "Explore Now",
-      ctaLink: ctaLink || "/shop",
+      imageId: bannerImageId,
+      ctaLink: ctaLink || "/products",
       order: Number(order) || 0,
       isActive: isActive === undefined ? true : Boolean(isActive),
       placement: placement || "storefront_hero",
@@ -104,27 +104,34 @@ exports.updateBanner = async (req, res, next) => {
       return next(new ErrorResponse("Banner not found", 404));
     }
 
-    const { title, subtitle, badge, ctaText, ctaLink, order, isActive, image, placement } =
+    const { title, ctaLink, order, isActive, image, placement } =
       req.body;
 
     let bannerImageUrl = image || banner.image;
+    let bannerImageId = banner.imageId || "";
 
     // Handle new uploaded image if provided
     if (req.file) {
+      if (banner.imageId) {
+        try {
+          await cloudinary.uploader.destroy(banner.imageId);
+        } catch (cloudinaryError) {
+          console.error("Failed to destroy old banner image from Cloudinary:", cloudinaryError);
+        }
+      }
       const uploadResult = await uploadImage(req.file, {
         folder: "goSolar/banners",
       });
       bannerImageUrl = uploadResult.url;
+      bannerImageId = uploadResult.public_id;
     }
 
     banner = await BannerModel.findByIdAndUpdate(
       id,
       {
         title: title || banner.title,
-        subtitle: subtitle !== undefined ? subtitle : banner.subtitle,
-        badge: badge !== undefined ? badge : banner.badge,
         image: bannerImageUrl,
-        ctaText: ctaText || banner.ctaText,
+        imageId: bannerImageId,
         ctaLink: ctaLink || banner.ctaLink,
         order: order !== undefined ? Number(order) : banner.order,
         isActive: isActive !== undefined ? Boolean(isActive) : banner.isActive,
@@ -153,6 +160,14 @@ exports.deleteBanner = async (req, res, next) => {
 
     if (!banner) {
       return next(new ErrorResponse("Banner not found", 404));
+    }
+
+    if (banner.imageId) {
+      try {
+        await cloudinary.uploader.destroy(banner.imageId);
+      } catch (cloudinaryError) {
+        console.error("Failed to delete banner image from Cloudinary:", cloudinaryError);
+      }
     }
 
     await BannerModel.findByIdAndDelete(id);

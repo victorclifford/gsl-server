@@ -38,6 +38,11 @@ const ProductSchema = new Schema(
       type: Number,
       default: 0,
     },
+    //standalone manual discount price (preserved when joining/leaving campaign campaigns)
+    manualDiscountPrice: {
+      type: Number,
+      default: 0,
+    },
     //shipping / freight class for solar equipment
     shippingClass: {
       type: String,
