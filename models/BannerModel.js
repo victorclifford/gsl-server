@@ -30,7 +30,7 @@ const bannerSchema = new mongoose.Schema(
     },
     placement: {
       type: String,
-      enum: ["storefront_hero", "storefront_promo_strip", "storefront_promo_card"],
+      enum: ["storefront_hero", "storefront_promo_strip", "storefront_promo_card", "storefront_leaderboard"],
       default: "storefront_hero",
     },
   },
