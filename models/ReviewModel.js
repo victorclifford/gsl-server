@@ -14,14 +14,8 @@ const reviewSchema = new mongoose.Schema(
     },
     content: {
       type: String,
-      required: [true, "Review testimonial text is required"],
       trim: true,
-    },
-    rating: {
-      type: Number,
-      min: 1,
-      max: 5,
-      default: 5,
+      default: "",
     },
     isPublished: {
       type: Boolean,
@@ -30,6 +24,16 @@ const reviewSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+    videoUrl: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    videoId: {
+      type: String,
+      default: "",
+      trim: true,
     },
   },
   { timestamps: true }

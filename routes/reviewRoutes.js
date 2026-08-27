@@ -7,12 +7,13 @@ const {
   deleteReview,
 } = require("../controllers/ReviewController");
 const { authorizeAdmin } = require("../middlewares/authorizations");
+const upload = require("../utils/multer");
 
 const router = express.Router();
 
 // Public routes
 router.get("/", getPublishedReviews);
-router.post("/", createReview);
+router.post("/", upload.single("videoFile"), createReview);
 
 // Admin routes
 router.get("/all", authorizeAdmin, getAllReviewsAdmin);

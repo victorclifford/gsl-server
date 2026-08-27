@@ -4,31 +4,20 @@ const bannerSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, "Banner title is required"],
+      required: [true, "Banner title/label is required"],
       trim: true,
-    },
-    subtitle: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-    badge: {
-      type: String,
-      trim: true,
-      default: "Special Highlight",
     },
     image: {
       type: String,
       required: [true, "Banner image is required"],
     },
-    ctaText: {
+    imageId: {
       type: String,
-      default: "Explore Now",
-      trim: true,
+      default: "",
     },
     ctaLink: {
       type: String,
-      default: "/shop",
+      default: "/products",
       trim: true,
     },
     order: {
@@ -39,16 +28,9 @@ const bannerSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    startDate: {
-      type: Date,
-      default: Date.now,
-    },
-    endDate: {
-      type: Date,
-    },
     placement: {
       type: String,
-      enum: ["storefront_hero", "storefront_promo_strip", "storefront_promo_card"],
+      enum: ["storefront_hero", "storefront_promo_strip", "storefront_promo_card", "storefront_leaderboard"],
       default: "storefront_hero",
     },
   },
