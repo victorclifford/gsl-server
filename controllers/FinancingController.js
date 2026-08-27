@@ -1,53 +1,88 @@
 const FinancingModel = require("../models/FinancingModel");
+const PackageModel = require("../models/PackageModel");
 const ErrorResponse = require("../utils/errorResponse");
-const PaystackAPI = require("../utils/paystack");
-const config = require("../utils/config");
 const paginate = require("../utils/paginate");
+const { uploadImage, cloudinary } = require("../utils/cloudinary");
 
 // Create financing request
 exports.requestFinancing = async (req, res, next) => {
   try {
     const {
+      requestType,
       packageId,
-      systemSize,
-      totalAmount,
-      downPayment,
-      repaymentMonths,
-      monthlyPayment,
-      employmentStatus,
-      monthlyIncome,
-      employerName,
+      officeAddress,
+      jobRole,
+      firstName,
+      lastName,
+      businessAddress,
+      natureOfBusiness,
+      yearsInBusiness,
       phoneNumber,
-      address,
+      nin,
+      provisionOfCheque,
+      directDebitSetup,
     } = req.body;
 
-    if (
-      !systemSize ||
-      !totalAmount ||
-      !downPayment ||
-      !repaymentMonths ||
-      !monthlyPayment ||
-      !employmentStatus ||
-      !monthlyIncome ||
-      !phoneNumber ||
-      !address
-    ) {
-      return next(new ErrorResponse("All required fields must be provided", 400));
+    if (!phoneNumber || !nin || !requestType || !packageId) {
+      return next(
+        new ErrorResponse("Phone number, NIN, request type, and package selection are required", 400)
+      );
+    }
+
+    if (requestType === "individual" && (!firstName || !lastName)) {
+      return next(
+        new ErrorResponse("First name and Last name are required for individual profile", 400)
+      );
+    }
+
+    // Fetch selected package details
+    const pkg = await PackageModel.findById(packageId);
+    if (!pkg) {
+      return next(new ErrorResponse("Selected package not found", 404));
+    }
+
+    const systemSize = pkg.name;
+    const totalAmount = pkg.price;
+
+    // Process files dynamically
+    const documents = {
+      passportPhoto: "",
+      passportPhotoId: "",
+      cacDocument: "",
+      cacDocumentId: "",
+    };
+
+    const docKeys = ["passportPhoto", "cacDocument"];
+    if (req.files) {
+      for (const key of docKeys) {
+        if (req.files[key] && req.files[key][0]) {
+          const uploadResult = await uploadImage(req.files[key][0], {
+            folder: "goSolar/financing",
+          });
+          documents[key] = uploadResult.url;
+          documents[`${key}Id`] = uploadResult.public_id;
+        }
+      }
     }
 
     const newRequest = await FinancingModel.create({
       user: req.user._id,
-      packageId: packageId || null,
+      requestType: requestType || "individual",
+      packageId,
       systemSize,
       totalAmount,
-      downPayment,
-      repaymentMonths,
-      monthlyPayment,
-      employmentStatus,
-      monthlyIncome,
-      employerName: employerName || "",
+      firstName: firstName || "",
+      lastName: lastName || "",
+      officeAddress: officeAddress || "",
+      jobRole: jobRole || "",
+      businessAddress: businessAddress || "",
+      natureOfBusiness: natureOfBusiness || "",
+      yearsInBusiness: yearsInBusiness ? parseInt(yearsInBusiness) : null,
       phoneNumber,
-      address,
+      nin,
+      provisionOfCheque: provisionOfCheque === "true" || provisionOfCheque === true,
+      directDebitSetup: directDebitSetup === "true" || directDebitSetup === true,
+      documents,
       status: "pending",
     });
 
@@ -65,7 +100,6 @@ exports.requestFinancing = async (req, res, next) => {
 exports.getMyRequests = async (req, res, next) => {
   try {
     const requests = await FinancingModel.find({ user: req.user._id })
-      .populate("packageId")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -81,8 +115,7 @@ exports.getMyRequests = async (req, res, next) => {
 exports.getSingleRequest = async (req, res, next) => {
   try {
     const request = await FinancingModel.findById(req.params.id)
-      .populate("user", "firstname lastname email")
-      .populate("packageId");
+      .populate("user", "firstname lastname email");
 
     if (!request) {
       return next(new ErrorResponse("Financing request not found", 404));
@@ -108,155 +141,6 @@ exports.getSingleRequest = async (req, res, next) => {
   }
 };
 
-// Initialize payment step (Downpayment or installment)
-exports.payFinancingStep = async (req, res, next) => {
-  try {
-    const request = await FinancingModel.findById(req.params.id);
-    if (!request) {
-      return next(new ErrorResponse("Request not found", 404));
-    }
-
-    if (request.status !== "approved") {
-      return next(
-        new ErrorResponse("This plan is not approved for payments yet", 400)
-      );
-    }
-
-    // Determine type: check if down payment has been paid
-    const downPaymentPaid = request.payments.some(
-      (p) => p.type === "down_payment" && p.status === "paid"
-    );
-
-    let amountToPay = 0;
-    let paymentType = "";
-
-    if (!downPaymentPaid) {
-      amountToPay = request.downPayment;
-      paymentType = "down_payment";
-    } else {
-      // Calculate how many installment payments are already paid
-      const installmentsPaidCount = request.payments.filter(
-        (p) => p.type === "installment" && p.status === "paid"
-      ).length;
-
-      if (installmentsPaidCount >= request.repaymentMonths) {
-        return next(new ErrorResponse("All installments already paid!", 400));
-      }
-
-      amountToPay = request.monthlyPayment;
-      paymentType = "installment";
-    }
-
-    const paystack = new PaystackAPI();
-    const reference = `FIN-${request._id.toString().substring(0, 8)}-${Date.now()}`;
-    const payload = {
-      email: req.user.email,
-      amount: Math.round(amountToPay * 100), // in kobo
-      callback_url: `${config.HOMEPAGE || "http://localhost:3000"}/account/financing?ref=${reference}`,
-      reference,
-    };
-
-    const initializeResponse = await paystack.initializeTransaction(payload);
-    if (!initializeResponse || !initializeResponse.status) {
-      return next(new ErrorResponse("Paystack initialization failed", 400));
-    }
-
-    // Push pending payment object
-    request.payments.push({
-      amount: amountToPay,
-      paymentReference: reference,
-      status: "pending",
-      type: paymentType,
-    });
-    await request.save();
-
-    return res.status(200).json({
-      success: true,
-      authorization_url: initializeResponse.data.authorization_url,
-      reference,
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
-
-// Verify single step payment
-exports.verifyFinancingPayment = async (req, res, next) => {
-  try {
-    const { reference } = req.body;
-    if (!reference) {
-      return next(new ErrorResponse("Payment reference is required", 400));
-    }
-
-    const request = await FinancingModel.findOne({
-      "payments.paymentReference": reference,
-    });
-
-    if (!request) {
-      return next(new ErrorResponse("Financing plan not found for this reference", 404));
-    }
-
-    const paymentIndex = request.payments.findIndex(
-      (p) => p.paymentReference === reference
-    );
-
-    if (request.payments[paymentIndex].status === "paid") {
-      return res.status(200).json({
-        success: true,
-        message: "Payment already verified",
-        financing: request,
-      });
-    }
-
-    const paystack = new PaystackAPI();
-    const verifiedPayment = await paystack.verifyPayment(reference);
-
-    if (
-      !verifiedPayment ||
-      !verifiedPayment.status ||
-      verifiedPayment.data.status !== "success"
-    ) {
-      request.payments[paymentIndex].status = "failed";
-      await request.save();
-      return next(new ErrorResponse("Payment verification failed", 400));
-    }
-
-    // Check amount (expected vs paid)
-    const expectedKobo = Math.round(request.payments[paymentIndex].amount * 100);
-    if (verifiedPayment.data.amount !== expectedKobo) {
-      request.payments[paymentIndex].status = "failed";
-      await request.save();
-      return next(new ErrorResponse("Payment amount mismatch", 400));
-    }
-
-    // Success: mark as paid
-    request.payments[paymentIndex].status = "paid";
-
-    // Recheck completion state
-    const installmentsPaidCount = request.payments.filter(
-      (p) => p.type === "installment" && p.status === "paid"
-    ).length;
-
-    const hasPaidDownPayment = request.payments.some(
-      (p) => p.type === "down_payment" && p.status === "paid"
-    );
-
-    if (hasPaidDownPayment && installmentsPaidCount >= request.repaymentMonths) {
-      request.status = "completed";
-    }
-
-    await request.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Payment verified successfully",
-      financing: request,
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
-
 // Admin list all requests
 exports.adminGetAllRequests = async (req, res, next) => {
   try {
@@ -270,10 +154,7 @@ exports.adminGetAllRequests = async (req, res, next) => {
       page,
       limit,
       sort: { createdAt: -1 },
-      populate: [
-        { path: "user", select: "firstname lastname email" },
-        { path: "packageId" },
-      ],
+      populate: [{ path: "user", select: "firstname lastname email" }],
     });
 
     return res.status(200).json({
@@ -290,7 +171,7 @@ exports.adminGetAllRequests = async (req, res, next) => {
 exports.adminApproveRequest = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { adminNotes, monthlyPayment, downPayment } = req.body;
+    const { adminNotes } = req.body;
 
     const request = await FinancingModel.findById(id);
     if (!request) {
@@ -305,8 +186,6 @@ exports.adminApproveRequest = async (req, res, next) => {
 
     request.status = "approved";
     if (adminNotes) request.adminNotes = adminNotes;
-    if (monthlyPayment) request.monthlyPayment = monthlyPayment;
-    if (downPayment) request.downPayment = downPayment;
 
     await request.save();
 
@@ -346,6 +225,41 @@ exports.adminDeclineRequest = async (req, res, next) => {
       success: true,
       message: "Financing request declined successfully",
       financing: request,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// Admin delete request
+exports.adminDeleteRequest = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const request = await FinancingModel.findById(id);
+    if (!request) {
+      return next(new ErrorResponse("Financing request not found", 404));
+    }
+
+    // Delete documents from Cloudinary if present
+    if (request.documents) {
+      const keys = ["passportPhotoId", "cacDocumentId"];
+      for (const key of keys) {
+        if (request.documents[key]) {
+          try {
+            await cloudinary.uploader.destroy(request.documents[key]);
+          } catch (cloudinaryErr) {
+            console.error(`Failed to delete ${key} from Cloudinary:`, cloudinaryErr);
+          }
+        }
+      }
+    }
+
+    await FinancingModel.findByIdAndDelete(id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Financing request deleted successfully",
     });
   } catch (error) {
     return next(error);

@@ -1,5 +1,6 @@
 const ReviewModel = require("../models/ReviewModel");
 const ErrorResponse = require("../utils/errorResponse");
+const { cloudinary, uploadImage } = require("../utils/cloudinary");
 
 // @desc    Get all published reviews (Public)
 // @route   GET /api/reviews
@@ -55,12 +56,34 @@ exports.getAllReviewsAdmin = async (req, res, next) => {
 // @access  Public / Authenticated
 exports.createReview = async (req, res, next) => {
   try {
+    if (!req.body.content && !req.file && !req.body.videoUrl) {
+      return next(
+        new ErrorResponse(
+          "Please provide either written testimonial text or a video testimonial.",
+          400
+        )
+      );
+    }
+
     const reviewData = {
       ...req.body,
       // If submitted by regular user, requires admin moderation by default
       isPublished: req.user?.isAdmin || req.user?.isSuperAdmin ? true : false,
       user: req.user?._id,
     };
+
+    if (req.file) {
+      const uploadResult = await uploadImage(req.file, {
+        folder: "goSolar/reviews",
+        resource_type: "video",
+        transformation: [
+          { width: 1280, height: 1280, crop: "limit" },
+          { quality: "auto", fetch_format: "auto" },
+        ],
+      });
+      reviewData.videoUrl = uploadResult.url;
+      reviewData.videoId = uploadResult.public_id;
+    }
 
     const review = await ReviewModel.create(reviewData);
 
@@ -107,6 +130,16 @@ exports.deleteReview = async (req, res, next) => {
 
     if (!review) {
       return next(new ErrorResponse("Review not found", 404));
+    }
+
+    if (review.videoId) {
+      try {
+        await cloudinary.uploader.destroy(review.videoId, {
+          resource_type: "video",
+        });
+      } catch (cloudinaryErr) {
+        console.error("Failed to delete video from Cloudinary:", cloudinaryErr);
+      }
     }
 
     return res.status(200).json({
