@@ -21,11 +21,12 @@ exports.requestFinancing = async (req, res, next) => {
       nin,
       provisionOfCheque,
       directDebitSetup,
+      email,
     } = req.body;
 
-    if (!phoneNumber || !nin || !requestType || !packageId) {
+    if (!phoneNumber || !nin || !requestType || !packageId || !email) {
       return next(
-        new ErrorResponse("Phone number, NIN, request type, and package selection are required", 400)
+        new ErrorResponse("Phone number, NIN, request type, package selection, and email are required", 400)
       );
     }
 
@@ -66,7 +67,7 @@ exports.requestFinancing = async (req, res, next) => {
     }
 
     const newRequest = await FinancingModel.create({
-      user: req.user._id,
+      email,
       requestType: requestType || "individual",
       packageId,
       systemSize,
@@ -96,34 +97,19 @@ exports.requestFinancing = async (req, res, next) => {
   }
 };
 
-// Get requests for logged-in user
-exports.getMyRequests = async (req, res, next) => {
-  try {
-    const requests = await FinancingModel.find({ user: req.user._id })
-      .sort({ createdAt: -1 });
-
-    return res.status(200).json({
-      success: true,
-      financingRequests: requests,
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
 
 // Get single request
 exports.getSingleRequest = async (req, res, next) => {
   try {
-    const request = await FinancingModel.findById(req.params.id)
-      .populate("user", "firstname lastname email");
+    const request = await FinancingModel.findById(req.params.id);
 
     if (!request) {
       return next(new ErrorResponse("Financing request not found", 404));
     }
 
-    // Check if owner or admin
+    // Check if owner (by email) or admin
     if (
-      request.user._id.toString() !== req.user._id.toString() &&
+      request.email !== req.user.email &&
       !req.user.isAdmin &&
       !req.user.isSuperAdmin
     ) {
@@ -154,7 +140,6 @@ exports.adminGetAllRequests = async (req, res, next) => {
       page,
       limit,
       sort: { createdAt: -1 },
-      populate: [{ path: "user", select: "firstname lastname email" }],
     });
 
     return res.status(200).json({
