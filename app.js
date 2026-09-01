@@ -25,6 +25,7 @@ const offerRoutes = require("./routes/offerRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 const announcementRoutes = require("./routes/announcementRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
+const contactRoutes = require("./routes/contactRoutes");
 
 const origin = [
   "http://localhost:3000",
@@ -73,6 +74,7 @@ app.use("/api/offers", offerRoutes);
 app.use("/api/banners", bannerRoutes);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/contact", contactRoutes);
 
 app.get("/", (req, res) => {
   res.send("<h3>GO_SOLAR: server running...</h3>");
