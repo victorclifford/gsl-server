@@ -3,6 +3,7 @@ const PackageModel = require("../models/PackageModel");
 const ErrorResponse = require("../utils/errorResponse");
 const paginate = require("../utils/paginate");
 const { uploadImage, cloudinary } = require("../utils/cloudinary");
+const { sendBrevoEmail } = require("../utils/sendBrevoEmail");
 
 // Create financing request
 exports.requestFinancing = async (req, res, next) => {
@@ -21,17 +22,24 @@ exports.requestFinancing = async (req, res, next) => {
       nin,
       provisionOfCheque,
       directDebitSetup,
+      email,
     } = req.body;
 
-    if (!phoneNumber || !nin || !requestType || !packageId) {
+    if (!phoneNumber || !nin || !requestType || !packageId || !email) {
       return next(
-        new ErrorResponse("Phone number, NIN, request type, and package selection are required", 400)
+        new ErrorResponse(
+          "Phone number, NIN, request type, package selection, and email are required",
+          400,
+        ),
       );
     }
 
     if (requestType === "individual" && (!firstName || !lastName)) {
       return next(
-        new ErrorResponse("First name and Last name are required for individual profile", 400)
+        new ErrorResponse(
+          "First name and Last name are required for individual profile",
+          400,
+        ),
       );
     }
 
@@ -66,7 +74,7 @@ exports.requestFinancing = async (req, res, next) => {
     }
 
     const newRequest = await FinancingModel.create({
-      user: req.user._id,
+      email,
       requestType: requestType || "individual",
       packageId,
       systemSize,
@@ -80,10 +88,46 @@ exports.requestFinancing = async (req, res, next) => {
       yearsInBusiness: yearsInBusiness ? parseInt(yearsInBusiness) : null,
       phoneNumber,
       nin,
-      provisionOfCheque: provisionOfCheque === "true" || provisionOfCheque === true,
-      directDebitSetup: directDebitSetup === "true" || directDebitSetup === true,
+      provisionOfCheque:
+        provisionOfCheque === "true" || provisionOfCheque === true,
+      directDebitSetup:
+        directDebitSetup === "true" || directDebitSetup === true,
       documents,
       status: "pending",
+    });
+
+    // Notify ADMIN_EMAIL
+    const adminEmail = process.env.ADMIN_EMAIL || "";
+    const applicantName =
+      requestType === "individual"
+        ? `${firstName} ${lastName}`
+        : natureOfBusiness || "Corporate Applicant";
+
+    sendBrevoEmail({
+      subject: `New Solar Financing Application: ${applicantName} (${systemSize})`,
+      to: [{ email: adminEmail, name: "Go Solar Admin" }],
+      templateName: "quote-notification",
+      parameters: {
+        fullName: applicantName,
+        phoneNumber,
+        email,
+        address: officeAddress || businessAddress || "N/A",
+        city: "N/A",
+        state: "N/A",
+        dailyKwh: 0,
+        peakWatts: 0,
+        recommendedInverter: systemSize,
+        recommendedBattery:
+          requestType === "individual" ? "NIN Provided" : "CAC Provided",
+        recommendedPv: `Total Value: ₦${Number(totalAmount).toLocaleString()}`,
+        notes: `Financing Application (${requestType.toUpperCase()}) - Job Role: ${jobRole || "N/A"}, Nature of Business: ${natureOfBusiness || "N/A"}, Cheque: ${provisionOfCheque ? "Yes" : "No"}, Direct Debit: ${directDebitSetup ? "Yes" : "No"}`,
+        dashboardUrl: `${process.env.HOMEPAGE || "http://localhost:3000"}/dashboard/financing`,
+      },
+    }).catch((err) => {
+      console.error(
+        "Failed to dispatch financing admin email notification:",
+        err,
+      );
     });
 
     return res.status(201).json({
@@ -96,39 +140,23 @@ exports.requestFinancing = async (req, res, next) => {
   }
 };
 
-// Get requests for logged-in user
-exports.getMyRequests = async (req, res, next) => {
-  try {
-    const requests = await FinancingModel.find({ user: req.user._id })
-      .sort({ createdAt: -1 });
-
-    return res.status(200).json({
-      success: true,
-      financingRequests: requests,
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
-
 // Get single request
 exports.getSingleRequest = async (req, res, next) => {
   try {
-    const request = await FinancingModel.findById(req.params.id)
-      .populate("user", "firstname lastname email");
+    const request = await FinancingModel.findById(req.params.id);
 
     if (!request) {
       return next(new ErrorResponse("Financing request not found", 404));
     }
 
-    // Check if owner or admin
+    // Check if owner (by email) or admin
     if (
-      request.user._id.toString() !== req.user._id.toString() &&
+      request.email !== req.user.email &&
       !req.user.isAdmin &&
       !req.user.isSuperAdmin
     ) {
       return next(
-        new ErrorResponse("Not authorized to view this request", 403)
+        new ErrorResponse("Not authorized to view this request", 403),
       );
     }
 
@@ -150,12 +178,15 @@ exports.adminGetAllRequests = async (req, res, next) => {
       query.status = status;
     }
 
-    const { data: requests, pagination } = await paginate(FinancingModel, query, {
-      page,
-      limit,
-      sort: { createdAt: -1 },
-      populate: [{ path: "user", select: "firstname lastname email" }],
-    });
+    const { data: requests, pagination } = await paginate(
+      FinancingModel,
+      query,
+      {
+        page,
+        limit,
+        sort: { createdAt: -1 },
+      },
+    );
 
     return res.status(200).json({
       success: true,
@@ -180,7 +211,7 @@ exports.adminApproveRequest = async (req, res, next) => {
 
     if (request.status !== "pending") {
       return next(
-        new ErrorResponse("Financing request is already processed", 400)
+        new ErrorResponse("Financing request is already processed", 400),
       );
     }
 
@@ -212,7 +243,7 @@ exports.adminDeclineRequest = async (req, res, next) => {
 
     if (request.status !== "pending") {
       return next(
-        new ErrorResponse("Financing request is already processed", 400)
+        new ErrorResponse("Financing request is already processed", 400),
       );
     }
 
@@ -249,7 +280,10 @@ exports.adminDeleteRequest = async (req, res, next) => {
           try {
             await cloudinary.uploader.destroy(request.documents[key]);
           } catch (cloudinaryErr) {
-            console.error(`Failed to delete ${key} from Cloudinary:`, cloudinaryErr);
+            console.error(
+              `Failed to delete ${key} from Cloudinary:`,
+              cloudinaryErr,
+            );
           }
         }
       }

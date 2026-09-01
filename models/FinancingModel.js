@@ -2,10 +2,9 @@ const mongoose = require("mongoose");
 
 const financingSchema = new mongoose.Schema(
   {
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
+    email: {
+      type: String,
+      required: [true, "Email address is required"],
     },
     requestType: {
       type: String,

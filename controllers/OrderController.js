@@ -320,55 +320,48 @@ exports.createOrder = async (req, res, next) => {
           ...orderConfirmedEmailData,
         });
 
-        //admins email copy
-        const admins = await UserModel.find({
-          $or: [{ isAdmin: true }, { isSuperAdmin: true }],
+        // Admin email copy to ADMIN_EMAIL
+        const adminEmail = process.env.ADMIN_EMAIL || "";
+        const adminDiscount = 0;
+        let adminEmailData = {
+          from: config.EMAIL_FROM,
+          to: adminEmail,
+          name: "Go Solar Admin",
+          subject: "New Order Received - " + trackingID,
+          template: "order-recieved",
+          trackingId: trackingID,
+          items: itemsArray,
+          discountPercentageOff: "0% OFF",
+          appliedDiscount: adminDiscount.toLocaleString("en-US", {
+            style: "currency",
+            currency: "NGN",
+          }),
+          deliveryFee: totDeliveryFee.toLocaleString("en-US", {
+            style: "currency",
+            currency: "NGN",
+          }),
+          totalCost: totCost.toLocaleString("en-US", {
+            style: "currency",
+            currency: "NGN",
+          }),
+          subTotalPrice: subTotalPrice.toLocaleString("en-US", {
+            style: "currency",
+            currency: "NGN",
+          }),
+          suiteNumber,
+          streetAddress,
+          cityAndZip,
+          estimatedDeliveryDate: formattedDeliveryDateEstimate,
+        };
+
+        sendBrevoEmail({
+          to: [{ email: adminEmail, name: "Go Solar Admin" }],
+          templateName: "order-recieved",
+          parameters: {
+            SupportAgentName: "Jessy",
+          },
+          ...adminEmailData,
         });
-
-        for (const admin of admins) {
-          const adminDiscount = 0;
-          let adminEmailData = {
-            from: config.EMAIL_FROM,
-            to: admin.email,
-            name: admin.firstname,
-            subject: "New Order Recieved",
-            template: "order-recieved",
-            trackingId: trackingID,
-            items: itemsArray,
-            discountPercentageOff: "0% OFF",
-            appliedDiscount: adminDiscount.toLocaleString("en-US", {
-              style: "currency",
-              currency: "NGN",
-            }),
-            deliveryFee: totDeliveryFee.toLocaleString("en-US", {
-              style: "currency",
-              currency: "NGN",
-            }),
-            totalCost: totCost.toLocaleString("en-US", {
-              style: "currency",
-              currency: "NGN",
-            }),
-            subTotalPrice: subTotalPrice.toLocaleString("en-US", {
-              style: "currency",
-              currency: "NGN",
-            }),
-            suiteNumber,
-            streetAddress,
-            cityAndZip,
-            estimatedDeliveryDate: formattedDeliveryDateEstimate,
-          };
-
-          // sendEmail(adminEmailData);
-          sendBrevoEmail({
-            // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
-            to: [{ email: admin.email, name: admin.firstname }],
-            templateName: "order-recieved",
-            parameters: {
-              SupportAgentName: "Jessy",
-            },
-            ...adminEmailData,
-          });
-        }
 
         return res.status(201).json({
           success: true,
@@ -940,47 +933,46 @@ const finalizeOrderPayment = async (paymentReference) => {
     ...orderConfirmedEmailData,
   });
 
-  // Admins email copy
-  const admins = await UserModel.find({
-    $or: [{ isAdmin: true }, { isSuperAdmin: true }],
+  // Admin email copy to ADMIN_EMAIL
+  const adminEmail = (
+    process.env.ADMIN_EMAIL ||
+    process.env.EMAIL_FROM ||
+    "info@gosolar.ng"
+  ).trim();
+  let adminEmailData = {
+    from: config.EMAIL_FROM,
+    to: adminEmail,
+    name: "Go Solar Admin",
+    subject: "Order Received - " + trackingID,
+    template: "order-received",
+    trackingId: trackingID,
+    items: itemsArray,
+    deliveryFee: totDeliveryFee.toLocaleString("en-US", {
+      style: "currency",
+      currency: "NGN",
+    }),
+    totalCost: totCostWithDelivery.toLocaleString("en-US", {
+      style: "currency",
+      currency: "NGN",
+    }),
+    subTotalPrice: subTotalPrice.toLocaleString("en-US", {
+      style: "currency",
+      currency: "NGN",
+    }),
+    suiteNumber,
+    streetAddress,
+    cityAndZip,
+    estimatedDeliveryDate: formattedDeliveryDateEstimate,
+  };
+
+  sendBrevoEmail({
+    to: [{ email: adminEmail, name: "Go Solar Admin" }],
+    templateName: "order-received",
+    parameters: {
+      SupportAgentName: "Jessy",
+    },
+    ...adminEmailData,
   });
-
-  for (const admin of admins) {
-    let adminEmailData = {
-      from: config.EMAIL_FROM,
-      to: admin.email,
-      name: admin.firstname,
-      subject: "Order Received",
-      template: "order-received",
-      trackingId: trackingID,
-      items: itemsArray,
-      deliveryFee: totDeliveryFee.toLocaleString("en-US", {
-        style: "currency",
-        currency: "NGN",
-      }),
-      totalCost: totCostWithDelivery.toLocaleString("en-US", {
-        style: "currency",
-        currency: "NGN",
-      }),
-      subTotalPrice: subTotalPrice.toLocaleString("en-US", {
-        style: "currency",
-        currency: "NGN",
-      }),
-      suiteNumber,
-      streetAddress,
-      cityAndZip,
-      estimatedDeliveryDate: formattedDeliveryDateEstimate,
-    };
-
-    sendBrevoEmail({
-      to: [{ email: admin.email, name: admin.firstname }],
-      templateName: "order-received",
-      parameters: {
-        SupportAgentName: "Jessy",
-      },
-      ...adminEmailData,
-    });
-  }
 
   return order;
 };

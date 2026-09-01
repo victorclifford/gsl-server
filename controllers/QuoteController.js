@@ -10,11 +10,9 @@ exports.createQuote = async (req, res, next) => {
   try {
     const quote = await QuoteModel.create(req.body);
 
-    // Find database admin users to notify
-    const admins = await UserModel.find({ isAdmin: true }).select("email name");
-    const recipients = admins.length > 0
-      ? admins.map(admin => ({ email: admin.email, name: admin.name || "Go Solar Admin" }))
-      : [{ email: process.env.ADMIN_EMAIL || process.env.EMAIL_FROM || "info@gosolar.ng", name: "Go Solar Admin" }];
+    // Send admin notification to ADMIN_EMAIL
+    const adminEmail = process.env.ADMIN_EMAIL || "";
+    const recipients = [{ email: adminEmail, name: "Go Solar Admin" }];
 
     const dashboardUrl = `${process.env.HOMEPAGE || "http://localhost:3000"}/dashboard/quotes`;
 
@@ -43,7 +41,8 @@ exports.createQuote = async (req, res, next) => {
 
     return res.status(201).json({
       success: true,
-      message: "Quote request submitted successfully. A solar engineer will contact you shortly.",
+      message:
+        "Quote request submitted successfully. A solar engineer will contact you shortly.",
       quote,
     });
   } catch (error) {
@@ -116,7 +115,7 @@ exports.updateQuoteStatus = async (req, res, next) => {
     const quote = await QuoteModel.findByIdAndUpdate(
       req.params.id,
       updateData,
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     if (!quote) {
