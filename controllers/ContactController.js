@@ -12,12 +12,12 @@ exports.createContactMessage = async (req, res, next) => {
       return next(
         new ErrorResponse(
           "Please fill in all required fields (name, email, phone, subject, message)",
-          400
-        )
+          400,
+        ),
       );
     }
 
-    const adminEmail = (process.env.ADMIN_EMAIL || process.env.EMAIL_FROM || "info@gosolar.ng").trim();
+    const adminEmail = process.env.ADMIN_EMAIL || "";
 
     // Dispatch email notification to admin
     await sendBrevoEmail({
@@ -36,7 +36,8 @@ exports.createContactMessage = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: "Thank you! Your message has been sent successfully. Our team will contact you shortly.",
+      message:
+        "Thank you! Your message has been sent successfully. Our team will contact you shortly.",
     });
   } catch (error) {
     return next(error);

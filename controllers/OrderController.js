@@ -937,7 +937,7 @@ const finalizeOrderPayment = async (paymentReference) => {
   const adminEmail = (
     process.env.ADMIN_EMAIL ||
     process.env.EMAIL_FROM ||
-    "info@gosolar.ng"
+    ""
   ).trim();
   let adminEmailData = {
     from: config.EMAIL_FROM,
