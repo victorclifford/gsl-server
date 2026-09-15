@@ -127,7 +127,7 @@ const signupUser = async (req, res, next) => {
     const tokenWithId = `${verificationToken}${user._id}`;
     const verificationUrl = `${config.HOMEPAGE}/auth/verify/${tokenWithId}`;
 
-    sendBrevoEmail({
+    await sendBrevoEmail({
       to: [{ email: user.email, name: user.firstname }],
       subject: "Activate Your Go Solar Account",
       templateName: "welcome",
@@ -235,7 +235,7 @@ const forgotPassword = async (req, res, next) => {
       //   resetURL,
       //   template: "forget-password",
       // });
-      sendBrevoEmail({
+      await sendBrevoEmail({
         // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
         to: [{ email: user.email, name: user.firstname }],
         subject: "Forgot Your Password?",
@@ -317,7 +317,7 @@ const requestUserVerification = async (req, res, next) => {
     //   template: "welcome",
     // });
 
-    sendBrevoEmail({
+    await sendBrevoEmail({
       // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
       to: [{ email: user.email, name: user.firstname }],
       subject: "Activate Your Go Solar Account",
@@ -468,7 +468,7 @@ const resetPassword = async (req, res, next) => {
     //   template: "password-reset-success",
     // });
 
-    sendBrevoEmail({
+    await sendBrevoEmail({
       // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
       to: [{ email: user.email, name: user.firstname }],
       subject: "Password Reset Successful",

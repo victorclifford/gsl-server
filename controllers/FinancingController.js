@@ -103,7 +103,7 @@ exports.requestFinancing = async (req, res, next) => {
         ? `${firstName} ${lastName}`
         : natureOfBusiness || "Corporate Applicant";
 
-    sendBrevoEmail({
+    await sendBrevoEmail({
       subject: `New Solar Financing Application: ${applicantName} (${systemSize})`,
       to: [{ email: adminEmail, name: "Go Solar Admin" }],
       templateName: "quote-notification",
@@ -123,11 +123,6 @@ exports.requestFinancing = async (req, res, next) => {
         notes: `Financing Application (${requestType.toUpperCase()}) - Job Role: ${jobRole || "N/A"}, Nature of Business: ${natureOfBusiness || "N/A"}, Cheque: ${provisionOfCheque ? "Yes" : "No"}, Direct Debit: ${directDebitSetup ? "Yes" : "No"}`,
         dashboardUrl: `${process.env.HOMEPAGE || "http://localhost:3000"}/dashboard/financing`,
       },
-    }).catch((err) => {
-      console.error(
-        "Failed to dispatch financing admin email notification:",
-        err,
-      );
     });
 
     return res.status(201).json({

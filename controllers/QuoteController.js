@@ -16,7 +16,7 @@ exports.createQuote = async (req, res, next) => {
 
     const dashboardUrl = `${process.env.HOMEPAGE || "http://localhost:3000"}/dashboard/quotes`;
 
-    sendBrevoEmail({
+    await sendBrevoEmail({
       subject: `New Solar Lead: ${quote.fullName}`,
       to: recipients,
       templateName: "quote-notification",
@@ -35,8 +35,6 @@ exports.createQuote = async (req, res, next) => {
         notes: quote.notes,
         dashboardUrl: dashboardUrl,
       },
-    }).catch((err) => {
-      console.error("Failed to dispatch admin email notification:", err);
     });
 
     return res.status(201).json({
