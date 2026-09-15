@@ -310,7 +310,7 @@ exports.createOrder = async (req, res, next) => {
         //send buyers copy email
         // sendEmail(orderConfirmedEmailData);
 
-        sendBrevoEmail({
+        await sendBrevoEmail({
           // sender: { name: "Jessy from goSolar", email: "support@mooresub.ng" },
           to: [{ email: user.email, name: user.firstname }],
           templateName: "order-confirmed",
@@ -354,7 +354,7 @@ exports.createOrder = async (req, res, next) => {
           estimatedDeliveryDate: formattedDeliveryDateEstimate,
         };
 
-        sendBrevoEmail({
+        await sendBrevoEmail({
           to: [{ email: adminEmail, name: "Go Solar Admin" }],
           templateName: "order-recieved",
           parameters: {
@@ -924,7 +924,7 @@ const finalizeOrderPayment = async (paymentReference) => {
     estimatedDeliveryDate: formattedDeliveryDateEstimate,
   };
 
-  sendBrevoEmail({
+  await sendBrevoEmail({
     to: [{ email: order.user.email, name: order.user.firstname }],
     templateName: "order-confirmed",
     parameters: {
@@ -944,7 +944,7 @@ const finalizeOrderPayment = async (paymentReference) => {
     to: adminEmail,
     name: "Go Solar Admin",
     subject: "Order Received - " + trackingID,
-    template: "order-received",
+    template: "order-recieved",
     trackingId: trackingID,
     items: itemsArray,
     deliveryFee: totDeliveryFee.toLocaleString("en-US", {
@@ -965,9 +965,9 @@ const finalizeOrderPayment = async (paymentReference) => {
     estimatedDeliveryDate: formattedDeliveryDateEstimate,
   };
 
-  sendBrevoEmail({
+  await sendBrevoEmail({
     to: [{ email: adminEmail, name: "Go Solar Admin" }],
-    templateName: "order-received",
+    templateName: "order-recieved",
     parameters: {
       SupportAgentName: "Jessy",
     },

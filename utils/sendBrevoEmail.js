@@ -10,31 +10,78 @@ const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
 // Function to load and compile Handlebars template from the views directory
 async function loadTemplate(templateName, parameters) {
-  const viewsPath = path.join(
-    process.cwd(),
-    "views",
-    `${templateName}.handlebars`
-  );
-  const templateContent = fs.readFileSync(viewsPath, "utf-8");
+  const templateNames = [
+    templateName,
+    templateName === "order-received" ? "order-recieved" : null,
+    templateName === "order-recieved" ? "order-received" : null,
+  ].filter(Boolean);
+
+  let templateContent = null;
+
+  for (const name of templateNames) {
+    const possiblePaths = [
+      path.join(__dirname, "..", "views", `${name}.handlebars`),
+      path.join(process.cwd(), "views", `${name}.handlebars`),
+      path.join(process.cwd(), "gsl-server", "views", `${name}.handlebars`),
+    ];
+
+    for (const p of possiblePaths) {
+      try {
+        if (fs.existsSync(p)) {
+          templateContent = fs.readFileSync(p, "utf-8");
+          break;
+        }
+      } catch (e) {
+        // Continue to next path candidate
+      }
+    }
+
+    if (templateContent) break;
+  }
+
+  if (!templateContent) {
+    console.warn(`Template "${templateName}.handlebars" not found.`);
+    return `<p>Go Solar Notification</p>`;
+  }
+
   const template = Handlebars.compile(templateContent);
-  return template(parameters);
+  return template(parameters || {});
 }
 
-async function sendBrevoEmail(options) {
+async function sendBrevoEmail(options = {}) {
   const { subject, sender, to, templateName, parameters } = options;
 
   try {
-    const htmlContent = await loadTemplate(templateName, parameters);
     const emailFrom = (process.env.EMAIL_FROM || "").trim();
     const brevoApiKey = (process.env.BREVO_API_KEY || "").trim();
-    console.log({ emailFrom });
+
+    if (!brevoApiKey) {
+      console.warn("BREVO_API_KEY is not configured in environment variables. Skipping email dispatch.");
+      return null;
+    }
+
+    if (!to || (Array.isArray(to) && to.length === 0)) {
+      console.warn("No recipient provided for sendBrevoEmail.");
+      return null;
+    }
+
+    // Merge options and parameters so templates receive all contextual fields
+    const templateParameters = {
+      ...options,
+      ...(parameters || {}),
+    };
+
+    const htmlContent = templateName
+      ? await loadTemplate(templateName, templateParameters)
+      : options.html || options.text || "<p>Go Solar Notification</p>";
+
+    const recipients = Array.isArray(to) ? to : [{ email: to }];
 
     const data = {
-      sender: { name: "Go Solar", email: emailFrom },
-      to: to, // [{ email: 'recipient@example.com', name: 'Recipient Name' }]
-      subject: subject,
+      sender: sender || { name: "Go Solar", email: emailFrom },
+      to: recipients,
+      subject: subject || options.subject || "Go Solar Notification",
       htmlContent: htmlContent,
-      // headers: { "Homiee-User-Id": "unique-id-1234" },
     };
 
     const response = await axios.post(BREVO_API_URL, data, {
@@ -42,26 +89,21 @@ async function sendBrevoEmail(options) {
         "api-key": brevoApiKey,
         "Content-Type": "application/json",
       },
+      timeout: 10000,
     });
 
-    console.log("Email sent:", response?.data?.messageId || "N/A");
+    console.log("Brevo email sent:", response?.data?.messageId || "Success");
+    return response.data;
   } catch (error) {
     console.error(
-      "Error sending email:",
-      error.response ? error.response.data : error.message
+      "Error sending email via Brevo:",
+      error.response ? JSON.stringify(error.response.data) : error.message
     );
+    return null;
   }
 }
-
-//* sample sending funtion...
-// sendBrevoEmail({
-//   sender: { name: "Tracy From Hommie", email: "developer@homiee.com.au" },
-//   to: [{ email: "victorgiadom29@gmail.com", name: "Victor Cliff" }],
-//   subject: "Test Mail",
-//   templateName: "testTemp",
-//   parameters: { homieeLink: "https://dev.homiee.com.au", SupportAgentName: "Tracy" },
-// });
 
 module.exports = {
   sendBrevoEmail,
 };
+
