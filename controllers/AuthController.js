@@ -154,7 +154,6 @@ const signupUser = async (req, res, next) => {
 //----------------LOGIN USER ----------------
 const loginUser = async (req, res, next) => {
   const { email, password } = req.body;
-  console.log("args::", { ...req.body });
 
   if (!email || !password) {
     return next(
@@ -422,7 +421,6 @@ const userVerification = async (req, res, next) => {
 
 //--------------------reset password --------------
 const resetPassword = async (req, res, next) => {
-  console.log({ resettoken: req.params.resettoken });
   const resetPasswordToken = crypto
     .createHash("sha256")
     .update(req.params.resettoken)
@@ -637,7 +635,6 @@ const changePassword = async (req, res, next) => {
     return next(error);
   }
 };
-
 
 //---------------- GET CURRENT USER (me) ----------------
 const getMe = async (req, res, next) => {
